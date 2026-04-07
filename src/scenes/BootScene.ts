@@ -512,9 +512,17 @@ export class BootScene extends Phaser.Scene {
 
     for (const [key, buf] of Object.entries(sfxMap)) {
       const url = bufferToWav(buf);
-      this.sound.add(key);
       this.load.audio(key, url);
     }
+
+    this.load.once('complete', () => {
+      // 載入完成後才能 add
+      for (const key of Object.keys(sfxMap)) {
+        if (this.cache.audio.exists(key)) {
+          this.sound.add(key);
+        }
+      }
+    });
     this.load.start();
   }
 }

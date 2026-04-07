@@ -270,7 +270,9 @@ export class BattleScene extends Phaser.Scene {
     defender.hp = Math.max(0, defender.hp - result.damage);
 
     // Play attack SFX
-    try { this.sound.play('sfx_attack'); } catch { /* audio not ready */ }
+    if (this.cache.audio.exists('sfx_attack')) {
+      try { this.sound.play('sfx_attack'); } catch { /* audio not ready */ }
+    }
 
     // Attack animation
     const sprite = isPlayer ? this.playerSprite : this.enemySprite;
