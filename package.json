@@ -1,0 +1,21 @@
+{
+  "name": "shanhaijing-monsters",
+  "version": "0.1.0",
+  "description": "山海經靈獸錄 — 寶可夢風格的山海經捕獸對戰遊戲",
+  "author": "BlancoChiuTW",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.6"
+  }
+}
