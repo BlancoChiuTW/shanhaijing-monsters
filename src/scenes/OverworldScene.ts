@@ -20,6 +20,8 @@ export class OverworldScene extends Phaser.Scene {
   private dialogueBox: Phaser.GameObjects.Container | null = null;
   private mapNameText!: Phaser.GameObjects.Text;
   private infoText!: Phaser.GameObjects.Text;
+  private gracePeriod = 0; // 戰鬥後免戰步數
+  private stepsSinceEncounter = 0; // 累計步數，越多越容易遇怪
 
   constructor() {
     super({ key: 'Overworld' });
@@ -224,10 +226,19 @@ export class OverworldScene extends Phaser.Scene {
       }
     }
 
-    // Tall grass - random encounter
+    // Tall grass - random encounter with grace period
     if (tile === 2) {
+      if (this.gracePeriod > 0) {
+        this.gracePeriod--;
+        return;
+      }
+      this.stepsSinceEncounter++;
+      // 遭遇率隨步數逐漸提高，前幾步幾乎不會遇到
+      const baseRate = this.currentMap.encounterRate;
+      const scaledRate = baseRate * Math.min(1, this.stepsSinceEncounter / 8);
       const roll = Math.random() * 100;
-      if (roll < this.currentMap.encounterRate) {
+      if (roll < scaledRate) {
+        this.stepsSinceEncounter = 0;
         this.triggerWildEncounter();
       }
     }
@@ -261,6 +272,8 @@ export class OverworldScene extends Phaser.Scene {
         type: 'wild',
         enemies: [wildMonster],
         onEnd: () => {
+          this.gracePeriod = 8 + Math.floor(Math.random() * 5); // 戰鬥後 8~12 步免戰
+          this.stepsSinceEncounter = 0;
           this.updateInfoText();
         },
       });
@@ -308,6 +321,8 @@ export class OverworldScene extends Phaser.Scene {
               trainerId: npc.id,
               enemies,
               onEnd: () => {
+                this.gracePeriod = 10;
+                this.stepsSinceEncounter = 0;
                 this.updateInfoText();
               },
             });
