@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { type MonsterInstance, type Skill, type Element, getTemplate } from '../data/monsters';
-import { calculateDamage, calculateCatchRate, getExpReward, applyExp, enemyChooseAction } from '../utils/battle';
+import { type MonsterInstance, type Skill, type Element, getTemplate, getStatStageMul } from '../data/monsters';
+import { calculateDamage, calculateCatchRate, getExpReward, applyExp, applyBuffSkill, enemyChooseAction, resetStatStages } from '../utils/battle';
 import { getState, addMonsterToTeam, getFirstAliveIndex } from '../utils/gameState';
 
 interface BattleData {
@@ -56,7 +56,6 @@ export class BattleScene extends Phaser.Scene {
   }
 
   init(data: BattleData): void {
-    // 重置所有狀態
     this.isAnimating = false;
     this.actionButtons = [];
     this.skillButtons = [];
@@ -69,13 +68,16 @@ export class BattleScene extends Phaser.Scene {
     this.trainerId = data.trainerId || '';
     this.onEnd = data.onEnd;
 
+    // 重置所有能力等級
+    for (const e of this.enemyTeam) resetStatStages(e);
+
     const state = getState();
     this.playerMonsterIndex = getFirstAliveIndex();
     this.playerMonster = state.team[this.playerMonsterIndex];
+    resetStatStages(this.playerMonster);
   }
 
   create(): void {
-    // 停止殘留的 tween
     this.tweens.killAll();
 
     const { width, height } = this.scale;
@@ -125,11 +127,15 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private updateInfoPanels(): void {
+    // 顯示能力變化指示
+    const pStages = this.formatStages(this.playerMonster);
+    const eStages = this.formatStages(this.enemyMonster);
+
     this.enemyInfoText.setText(
-      `${this.enemyMonster.nickname} Lv.${this.enemyMonster.level}  HP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}`
+      `${this.enemyMonster.nickname} Lv.${this.enemyMonster.level}  HP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}${eStages}`
     );
     this.playerInfoText.setText(
-      `${this.playerMonster.nickname} Lv.${this.playerMonster.level}  HP:${this.playerMonster.hp}/${this.playerMonster.maxHp}`
+      `${this.playerMonster.nickname} Lv.${this.playerMonster.level}  HP:${this.playerMonster.hp}/${this.playerMonster.maxHp}${pStages}`
     );
 
     const enemyRatio = Math.max(0, this.enemyMonster.hp / this.enemyMonster.maxHp);
@@ -140,6 +146,14 @@ export class BattleScene extends Phaser.Scene {
 
     this.enemyHpBar.fillColor = enemyRatio > 0.5 ? 0x44cc44 : enemyRatio > 0.2 ? 0xcccc44 : 0xcc4444;
     this.playerHpBar.fillColor = playerRatio > 0.5 ? 0x44cc44 : playerRatio > 0.2 ? 0xcccc44 : 0xcc4444;
+  }
+
+  private formatStages(m: MonsterInstance): string {
+    const parts: string[] = [];
+    if (m.atkStage !== 0) parts.push(`攻${m.atkStage > 0 ? '+' : ''}${m.atkStage}`);
+    if (m.defStage !== 0) parts.push(`防${m.defStage > 0 ? '+' : ''}${m.defStage}`);
+    if (m.spdStage !== 0) parts.push(`速${m.spdStage > 0 ? '+' : ''}${m.spdStage}`);
+    return parts.length > 0 ? `\n${parts.join(' ')}` : '';
   }
 
   private showMessage(msg: string, onComplete?: () => void): void {
@@ -198,14 +212,15 @@ export class BattleScene extends Phaser.Scene {
     const { width, height } = this.scale;
 
     this.playerMonster.skills.forEach((s, i) => {
-      const x = width / 2 - 120 + (i % 2) * 180;
+      const x = width / 2 - 140 + (i % 2) * 200;
       const y = height - 68 + Math.floor(i / 2) * 26;
-      const color = s.currentPp > 0 ? '#ffffff' : '#555555';
       const elemColor = ELEMENT_COLORS[s.skill.element];
       const elemHex = '#' + elemColor.toString(16).padStart(6, '0');
-      const label = `${s.skill.name}(${s.skill.element}) PP:${s.currentPp}/${s.skill.pp}`;
+      const effectTag = s.skill.effect ? this.getEffectTag(s.skill) : '';
+      const label = `${s.skill.name}(${s.skill.element}${effectTag}) ${s.currentPp}/${s.skill.pp}`;
+      const color = s.currentPp > 0 ? elemHex : '#555555';
       const btn = this.add.text(x, y, label, {
-        fontSize: '11px', color: s.currentPp > 0 ? elemHex : color,
+        fontSize: '11px', color,
       }).setInteractive({ useHandCursor: true });
 
       if (s.currentPp > 0) {
@@ -223,6 +238,19 @@ export class BattleScene extends Phaser.Scene {
     this.skillButtons.push(back);
   }
 
+  private getEffectTag(skill: Skill): string {
+    if (!skill.effect) return '';
+    switch (skill.effect.type) {
+      case 'heal': return '♥';
+      case 'drain': return '♥';
+      case 'recoil': return '⚡';
+      case 'statUp': return '↑';
+      case 'statDown': return '↓';
+      case 'priority': return '»';
+      default: return '';
+    }
+  }
+
   // ═══════════════════════════════════════
   //  技能特效系統
   // ═══════════════════════════════════════
@@ -231,41 +259,35 @@ export class BattleScene extends Phaser.Scene {
 
     switch (skill.element) {
       case '火': {
-        // 火焰爆發 - 多個火球散射
-        for (let i = 0; i < 8; i++) {
-          const flame = this.add.circle(targetX, targetY, 4 + Math.random() * 6, color, 0.9);
+        for (let i = 0; i < 10; i++) {
+          const flame = this.add.circle(targetX, targetY, 4 + Math.random() * 8, color, 0.9);
           flame.setDepth(50);
-          const angle = (i / 8) * Math.PI * 2;
+          const angle = (i / 10) * Math.PI * 2;
+          const dist = 30 + Math.random() * 25;
           this.tweens.add({
             targets: flame,
-            x: targetX + Math.cos(angle) * (30 + Math.random() * 20),
-            y: targetY + Math.sin(angle) * (30 + Math.random() * 20),
-            alpha: 0,
-            scale: 0.2,
-            duration: 400,
+            x: targetX + Math.cos(angle) * dist,
+            y: targetY + Math.sin(angle) * dist,
+            alpha: 0, scale: 0.2, duration: 400,
             onComplete: () => flame.destroy(),
           });
         }
-        // 中心閃光
-        const flash = this.add.circle(targetX, targetY, 20, 0xffaa00, 0.8).setDepth(50);
+        const flash = this.add.circle(targetX, targetY, 25, 0xffaa00, 0.8).setDepth(50);
         this.tweens.add({
-          targets: flash, alpha: 0, scale: 2, duration: 300,
+          targets: flash, alpha: 0, scale: 2.5, duration: 350,
           onComplete: () => { flash.destroy(); onDone(); },
         });
         break;
       }
       case '水': {
-        // 水花飛濺
-        for (let i = 0; i < 10; i++) {
-          const drop = this.add.circle(targetX + (Math.random() - 0.5) * 40, targetY - 20, 3, color, 0.8);
+        for (let i = 0; i < 12; i++) {
+          const drop = this.add.circle(targetX + (Math.random() - 0.5) * 50, targetY - 30, 3 + Math.random() * 3, color, 0.8);
           drop.setDepth(50);
           this.tweens.add({
             targets: drop,
-            y: targetY + 20 + Math.random() * 30,
-            x: drop.x + (Math.random() - 0.5) * 30,
-            alpha: 0,
-            duration: 500,
-            delay: i * 30,
+            y: targetY + 25 + Math.random() * 35,
+            x: drop.x + (Math.random() - 0.5) * 40,
+            alpha: 0, duration: 500, delay: i * 25,
             onComplete: () => drop.destroy(),
           });
         }
@@ -273,105 +295,86 @@ export class BattleScene extends Phaser.Scene {
         break;
       }
       case '風': {
-        // 風刃旋轉
-        for (let i = 0; i < 6; i++) {
-          const slash = this.add.rectangle(targetX, targetY, 30, 3, color, 0.7).setDepth(50);
-          slash.setAngle(i * 30);
+        for (let i = 0; i < 8; i++) {
+          const slash = this.add.rectangle(targetX, targetY, 35, 3, color, 0.7).setDepth(50);
+          slash.setAngle(i * 22.5);
           this.tweens.add({
             targets: slash,
-            angle: slash.angle + 180,
-            scale: 1.5,
-            alpha: 0,
-            duration: 400,
-            delay: i * 50,
+            angle: slash.angle + 180, scale: 1.8, alpha: 0,
+            duration: 400, delay: i * 40,
             onComplete: () => slash.destroy(),
           });
         }
-        this.time.delayedCall(500, onDone);
+        this.time.delayedCall(550, onDone);
         break;
       }
       case '光': {
-        // 光柱從天降下
-        const beam = this.add.rectangle(targetX, targetY - 100, 20, 200, color, 0.6).setDepth(50);
+        const beam = this.add.rectangle(targetX, targetY - 120, 24, 240, color, 0.6).setDepth(50);
         this.tweens.add({
-          targets: beam,
-          y: targetY, alpha: 0.9,
-          duration: 200,
-          yoyo: true,
-          hold: 150,
+          targets: beam, y: targetY, alpha: 0.95,
+          duration: 200, yoyo: true, hold: 200,
           onComplete: () => { beam.destroy(); onDone(); },
         });
-        // 光粒子
-        for (let i = 0; i < 6; i++) {
-          const p = this.add.circle(targetX + (Math.random() - 0.5) * 30, targetY + (Math.random() - 0.5) * 30, 3, 0xffffff, 0.9).setDepth(51);
+        for (let i = 0; i < 8; i++) {
+          const p = this.add.circle(
+            targetX + (Math.random() - 0.5) * 40,
+            targetY + (Math.random() - 0.5) * 40,
+            2 + Math.random() * 3, 0xffffff, 0.9,
+          ).setDepth(51);
           this.tweens.add({
-            targets: p, y: p.y - 40, alpha: 0, duration: 600, delay: 100 + i * 50,
+            targets: p, y: p.y - 50, alpha: 0,
+            duration: 600, delay: 100 + i * 40,
             onComplete: () => p.destroy(),
           });
         }
         break;
       }
       case '幻': {
-        // 幻影扭曲
-        const rings = [];
-        for (let i = 0; i < 3; i++) {
-          const ring = this.add.circle(targetX, targetY, 10 + i * 12, color, 0).setDepth(50);
+        for (let i = 0; i < 4; i++) {
+          const ring = this.add.circle(targetX, targetY, 10 + i * 14, color, 0).setDepth(50);
           ring.setStrokeStyle(2, color);
-          rings.push(ring);
           this.tweens.add({
-            targets: ring,
-            scale: 2,
-            alpha: 0,
-            duration: 500,
-            delay: i * 120,
+            targets: ring, scale: 2.5, alpha: 0,
+            duration: 500, delay: i * 100,
             onComplete: () => ring.destroy(),
           });
         }
-        this.time.delayedCall(600, onDone);
+        this.time.delayedCall(650, onDone);
         break;
       }
       case '土': {
-        // 地面震動 + 岩石飛出
-        this.cameras.main.shake(200, 0.01);
-        for (let i = 0; i < 6; i++) {
+        this.cameras.main.shake(250, 0.012);
+        for (let i = 0; i < 8; i++) {
           const rock = this.add.rectangle(
-            targetX + (Math.random() - 0.5) * 50,
-            targetY + 20,
-            8 + Math.random() * 8,
-            8 + Math.random() * 8,
+            targetX + (Math.random() - 0.5) * 60, targetY + 25,
+            8 + Math.random() * 10, 8 + Math.random() * 10,
             color, 0.9,
           ).setDepth(50).setAngle(Math.random() * 45);
           this.tweens.add({
             targets: rock,
-            y: targetY - 30 - Math.random() * 40,
-            alpha: 0,
-            angle: rock.angle + 180,
-            duration: 500,
-            delay: i * 40,
+            y: targetY - 35 - Math.random() * 45,
+            alpha: 0, angle: rock.angle + 180,
+            duration: 500, delay: i * 35,
             onComplete: () => rock.destroy(),
           });
         }
-        this.time.delayedCall(500, onDone);
+        this.time.delayedCall(550, onDone);
         break;
       }
       case '毒': {
-        // 毒霧擴散
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < 10; i++) {
           const bubble = this.add.circle(
-            targetX + (Math.random() - 0.5) * 30,
-            targetY + (Math.random() - 0.5) * 30,
-            5 + Math.random() * 8,
-            color,
-            0.5,
+            targetX + (Math.random() - 0.5) * 40,
+            targetY + (Math.random() - 0.5) * 40,
+            4 + Math.random() * 10, color, 0.5,
           ).setDepth(50);
           this.tweens.add({
             targets: bubble,
-            scale: 1.5 + Math.random(),
+            scale: 1.8 + Math.random(),
             alpha: 0,
-            x: bubble.x + (Math.random() - 0.5) * 40,
-            y: bubble.y - Math.random() * 30,
-            duration: 600,
-            delay: i * 50,
+            x: bubble.x + (Math.random() - 0.5) * 50,
+            y: bubble.y - Math.random() * 35,
+            duration: 600, delay: i * 45,
             onComplete: () => bubble.destroy(),
           });
         }
@@ -381,6 +384,83 @@ export class BattleScene extends Phaser.Scene {
       default:
         onDone();
     }
+  }
+
+  /** 增益/減益特效 */
+  private playBuffVfx(targetX: number, targetY: number, isUp: boolean): void {
+    const color = isUp ? 0x44ff88 : 0xff4444;
+    for (let i = 0; i < 6; i++) {
+      const arrow = this.add.text(
+        targetX + (Math.random() - 0.5) * 30,
+        targetY + (isUp ? 20 : -20),
+        isUp ? '▲' : '▼',
+        { fontSize: '14px', color: '#' + color.toString(16).padStart(6, '0') },
+      ).setOrigin(0.5).setDepth(60);
+      this.tweens.add({
+        targets: arrow,
+        y: arrow.y + (isUp ? -50 : 50),
+        alpha: 0,
+        duration: 600,
+        delay: i * 60,
+        onComplete: () => arrow.destroy(),
+      });
+    }
+  }
+
+  /** 回復特效 */
+  private playHealVfx(targetX: number, targetY: number): void {
+    for (let i = 0; i < 8; i++) {
+      const sparkle = this.add.circle(
+        targetX + (Math.random() - 0.5) * 50,
+        targetY + 25, 3 + Math.random() * 3, 0x44ff88, 0.9,
+      ).setDepth(50);
+      this.tweens.add({
+        targets: sparkle, y: sparkle.y - 60, alpha: 0,
+        duration: 600, delay: i * 60,
+        onComplete: () => sparkle.destroy(),
+      });
+    }
+  }
+
+  /** 吸血特效 */
+  private playDrainVfx(fromX: number, fromY: number, toX: number, toY: number): void {
+    for (let i = 0; i < 5; i++) {
+      const orb = this.add.circle(fromX + (Math.random() - 0.5) * 30, fromY, 4, 0x44ff88, 0.8).setDepth(55);
+      this.tweens.add({
+        targets: orb,
+        x: toX + (Math.random() - 0.5) * 15,
+        y: toY,
+        alpha: 0.3,
+        duration: 400,
+        delay: i * 80,
+        onComplete: () => orb.destroy(),
+      });
+    }
+  }
+
+  /** 反傷特效 */
+  private playRecoilVfx(targetX: number, targetY: number): void {
+    this.cameras.main.shake(100, 0.005);
+    const flash = this.add.circle(targetX, targetY, 15, 0xff6644, 0.6).setDepth(55);
+    this.tweens.add({
+      targets: flash, alpha: 0, scale: 2, duration: 300,
+      onComplete: () => flash.destroy(),
+    });
+  }
+
+  private determineFirstAttacker(playerSkill: Skill, enemySkill: Skill): boolean {
+    // 先制技能判定
+    const playerPriority = playerSkill.effect?.type === 'priority' ? 1 : 0;
+    const enemyPriority = enemySkill.effect?.type === 'priority' ? 1 : 0;
+    if (playerPriority !== enemyPriority) return playerPriority > enemyPriority;
+
+    // 速度判定（含能力等級）
+    const playerSpd = this.playerMonster.spd * getStatStageMul(this.playerMonster.spdStage);
+    const enemySpd = this.enemyMonster.spd * getStatStageMul(this.enemyMonster.spdStage);
+    if (playerSpd !== enemySpd) return playerSpd >= enemySpd;
+
+    // 同速隨機
+    return Math.random() < 0.5;
   }
 
   private executePlayerTurn(skillIndex: number): void {
@@ -393,24 +473,28 @@ export class BattleScene extends Phaser.Scene {
     const enemySkillIndex = enemyChooseAction(this.enemyMonster);
     const enemySkill = this.enemyMonster.skills[enemySkillIndex];
 
-    const playerFirst = this.playerMonster.spd >= this.enemyMonster.spd;
+    const playerFirst = this.determineFirstAttacker(playerSkill.skill, enemySkill.skill);
 
     if (playerFirst) {
-      this.doAttack(this.playerMonster, this.enemyMonster, playerSkill.skill, true, () => {
+      this.doTurnAction(this.playerMonster, this.enemyMonster, playerSkill.skill, true, () => {
         if (this.enemyMonster.hp <= 0) { this.onEnemyDefeated(); return; }
+        if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
         enemySkill.currentPp--;
-        this.doAttack(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+        this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
           if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
+          if (this.enemyMonster.hp <= 0) { this.onEnemyDefeated(); return; }
           this.isAnimating = false;
           this.showActions();
         });
       });
     } else {
       enemySkill.currentPp--;
-      this.doAttack(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+      this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
         if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
-        this.doAttack(this.playerMonster, this.enemyMonster, playerSkill.skill, true, () => {
+        if (this.enemyMonster.hp <= 0) { this.onEnemyDefeated(); return; }
+        this.doTurnAction(this.playerMonster, this.enemyMonster, playerSkill.skill, true, () => {
           if (this.enemyMonster.hp <= 0) { this.onEnemyDefeated(); return; }
+          if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
           this.isAnimating = false;
           this.showActions();
         });
@@ -418,35 +502,46 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
-  private doAttack(
+  /** 統一處理攻擊/輔助技能 */
+  private doTurnAction(
     attacker: MonsterInstance, defender: MonsterInstance,
     skill: Skill, isPlayer: boolean, onDone: () => void,
   ): void {
+    // 命中判定
     if (Math.random() * 100 > skill.accuracy) {
       this.showMessage(`${attacker.nickname} 的 ${skill.name} 沒有命中！`, onDone);
       return;
     }
 
-    // 回復技能
+    // 輔助技能 (power === 0)
     if (skill.power === 0) {
-      const healAmount = Math.floor(attacker.maxHp * 0.3);
-      attacker.hp = Math.min(attacker.maxHp, attacker.hp + healAmount);
-      // 回復特效
+      const msg = applyBuffSkill(attacker, defender, skill);
       const sprite = isPlayer ? this.playerSprite : this.enemySprite;
-      for (let i = 0; i < 5; i++) {
-        const sparkle = this.add.circle(sprite.x + (Math.random() - 0.5) * 40, sprite.y + 20, 3, 0x44ff88, 0.9).setDepth(50);
-        this.tweens.add({
-          targets: sparkle, y: sparkle.y - 50, alpha: 0, duration: 600, delay: i * 80,
-          onComplete: () => sparkle.destroy(),
-        });
+      const targetSprite = isPlayer ? this.enemySprite : this.playerSprite;
+
+      if (skill.effect?.type === 'heal') {
+        this.playHealVfx(sprite.x, sprite.y);
+      } else if (skill.effect?.type === 'statUp') {
+        this.playBuffVfx(sprite.x, sprite.y, true);
+      } else if (skill.effect?.type === 'statDown') {
+        this.playBuffVfx(targetSprite.x, targetSprite.y, false);
       }
-      this.showMessage(`${attacker.nickname} 使用了 ${skill.name}！恢復了 ${healAmount} HP！`, () => {
+
+      this.showMessage(msg, () => {
         this.updateInfoPanels();
         onDone();
       });
       return;
     }
 
+    // 攻擊技能
+    this.doAttack(attacker, defender, skill, isPlayer, onDone);
+  }
+
+  private doAttack(
+    attacker: MonsterInstance, defender: MonsterInstance,
+    skill: Skill, isPlayer: boolean, onDone: () => void,
+  ): void {
     const result = calculateDamage(attacker, defender, skill);
     defender.hp = Math.max(0, defender.hp - result.damage);
 
@@ -477,18 +572,51 @@ export class BattleScene extends Phaser.Scene {
               const dmgColor = result.effectiveness === 'effective' ? '#ff4444'
                 : result.effectiveness === 'weak' ? '#888888' : '#ffffff';
               const dmgText = this.add.text(targetSprite.x, targetSprite.y - 30, `-${result.damage}`, {
-                fontSize: result.isCrit ? '20px' : '16px',
+                fontSize: result.isCrit ? '22px' : '16px',
                 fontStyle: 'bold',
                 color: dmgColor,
                 stroke: '#000000',
                 strokeThickness: 3,
               }).setOrigin(0.5).setDepth(60);
               this.tweens.add({
-                targets: dmgText, y: dmgText.y - 30, alpha: 0, duration: 800,
+                targets: dmgText, y: dmgText.y - 35, alpha: 0, duration: 800,
                 onComplete: () => dmgText.destroy(),
               });
 
-              this.showMessage(result.message, onDone);
+              // 處理附帶效果動畫
+              this.showMessage(result.message, () => {
+                // 吸血效果
+                if (result.drainHeal > 0) {
+                  this.playDrainVfx(targetSprite.x, targetSprite.y, sprite.x, sprite.y);
+                  this.updateInfoPanels();
+                }
+                // 反傷效果
+                if (result.recoilDmg > 0) {
+                  this.playRecoilVfx(sprite.x, sprite.y);
+                  this.updateInfoPanels();
+                  // 顯示反傷數字
+                  const recoilText = this.add.text(sprite.x, sprite.y - 30, `-${result.recoilDmg}`, {
+                    fontSize: '14px', fontStyle: 'bold', color: '#ff8844',
+                    stroke: '#000000', strokeThickness: 2,
+                  }).setOrigin(0.5).setDepth(60);
+                  this.tweens.add({
+                    targets: recoilText, y: recoilText.y - 25, alpha: 0, duration: 600,
+                    onComplete: () => recoilText.destroy(),
+                  });
+                }
+                // 能力變化效果
+                if (result.statMsg) {
+                  if (skill.effect?.type === 'statDown') {
+                    this.playBuffVfx(targetSprite.x, targetSprite.y, false);
+                  }
+                  this.showMessage(result.statMsg, () => {
+                    this.updateInfoPanels();
+                    onDone();
+                  });
+                  return;
+                }
+                onDone();
+              });
             },
           });
         });
@@ -509,6 +637,9 @@ export class BattleScene extends Phaser.Scene {
         let msg = `${this.enemyMonster.nickname} 被打倒了！獲得 ${exp} 經驗值。`;
         if (levelResult.leveled) {
           msg += `\n${this.playerMonster.nickname} 升級到了 Lv.${levelResult.newLevel}！`;
+          if (levelResult.newSkills.length > 0) {
+            msg += `\n學會了新技能：${levelResult.newSkills.join('、')}！`;
+          }
         }
 
         this.showMessage(msg, () => {
@@ -546,6 +677,9 @@ export class BattleScene extends Phaser.Scene {
         this.showMessage('所有靈獸都倒下了...回到起點休息。', () => {
           state.team.forEach(m => {
             m.hp = m.maxHp;
+            m.atkStage = 0;
+            m.defStage = 0;
+            m.spdStage = 0;
             m.skills.forEach(s => { s.currentPp = s.skill.pp; });
           });
           state.currentMapId = 'qingqiu';
@@ -558,6 +692,7 @@ export class BattleScene extends Phaser.Scene {
 
       this.playerMonsterIndex = nextAlive;
       this.playerMonster = state.team[nextAlive];
+      resetStatStages(this.playerMonster);
       this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
       this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
       this.updateInfoPanels();
@@ -584,7 +719,6 @@ export class BattleScene extends Phaser.Scene {
           const caught = calculateCatchRate(this.enemyMonster);
 
           if (caught) {
-            // 捕獲成功特效
             this.tweens.add({
               targets: this.enemySprite,
               scale: 0, alpha: 0, duration: 400,
@@ -609,7 +743,7 @@ export class BattleScene extends Phaser.Scene {
               const enemySkillIndex = enemyChooseAction(this.enemyMonster);
               const enemySkill = this.enemyMonster.skills[enemySkillIndex];
               enemySkill.currentPp--;
-              this.doAttack(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+              this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
                 if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
                 this.isAnimating = false;
                 this.showActions();
@@ -632,7 +766,7 @@ export class BattleScene extends Phaser.Scene {
           const enemySkillIndex = enemyChooseAction(this.enemyMonster);
           const enemySkill = this.enemyMonster.skills[enemySkillIndex];
           enemySkill.currentPp--;
-          this.doAttack(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+          this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
             if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
             this.isAnimating = false;
             this.showActions();
@@ -665,14 +799,16 @@ export class BattleScene extends Phaser.Scene {
         btn.on('pointerdown', () => {
           this.playerMonsterIndex = i;
           this.playerMonster = m;
+          resetStatStages(this.playerMonster);
           this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
+          this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
           this.updateInfoPanels();
           this.clearButtons();
           this.showMessage(`換上了 ${m.nickname}！`, () => {
             const enemySkillIndex = enemyChooseAction(this.enemyMonster);
             const enemySkill = this.enemyMonster.skills[enemySkillIndex];
             enemySkill.currentPp--;
-            this.doAttack(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+            this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
               if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
               this.isAnimating = false;
               this.showActions();
@@ -693,6 +829,11 @@ export class BattleScene extends Phaser.Scene {
   private endBattle(): void {
     this.isAnimating = false;
     this.tweens.killAll();
+
+    // 重置所有能力等級
+    resetStatStages(this.playerMonster);
+    for (const e of this.enemyTeam) resetStatStages(e);
+
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.time.delayedCall(350, () => {
       this.onEnd?.();
