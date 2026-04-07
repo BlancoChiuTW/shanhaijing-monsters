@@ -26,6 +26,8 @@ export class BootScene extends Phaser.Scene {
     this.load.image('tile_tall_grass', 'assets/tiles/tall_grass.png');
     this.load.image('tile_water', 'assets/tiles/water.png');
     this.load.image('tile_exit', 'assets/tiles/exit.png');
+    this.load.image('tile_path', 'assets/tiles/path.png');
+    this.load.image('tile_flower', 'assets/tiles/flower.png');
 
     // 載入靈獸
     for (const m of MONSTERS) {

@@ -1,18 +1,18 @@
 import Phaser from 'phaser';
 import { getMap, type GameMap, type MapNpc } from '../data/maps';
-import { getState, saveGame, getFirstAliveIndex, healTeam } from '../utils/gameState';
-import { createMonsterInstance, MONSTERS } from '../data/monsters';
+import { getState, saveGame, getFirstAliveIndex, healTeam, addMonsterToTeam } from '../utils/gameState';
+import { createMonsterInstance, MONSTERS, getCultivation, fuseMonsters, type MonsterInstance } from '../data/monsters';
+import { healMonster } from '../utils/battle';
 
 const TILE_SIZE = 32;
 
 export class OverworldScene extends Phaser.Scene {
-  private player!: Phaser.GameObjects.Rectangle;
+  private player!: Phaser.GameObjects.Image;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
   private currentMap!: GameMap;
   private tileSprites: Phaser.GameObjects.Image[] = [];
-  private npcSprites: Phaser.GameObjects.Rectangle[] = [];
-  private npcLabels: Phaser.GameObjects.Text[] = [];
+  private npcSprites: Phaser.GameObjects.Container[] = [];
   private playerTileX = 0;
   private playerTileY = 0;
   private isMoving = false;
@@ -20,8 +20,8 @@ export class OverworldScene extends Phaser.Scene {
   private dialogueBox: Phaser.GameObjects.Container | null = null;
   private mapNameText!: Phaser.GameObjects.Text;
   private infoText!: Phaser.GameObjects.Text;
-  private gracePeriod = 0; // 戰鬥後免戰步數
-  private stepsSinceEncounter = 0; // 累計步數，越多越容易遇怪
+  private gracePeriod = 0;
+  private stepsSinceEncounter = 0;
 
   constructor() {
     super({ key: 'Overworld' });
@@ -43,11 +43,10 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private renderMap(): void {
-    // Clear old tiles
     this.tileSprites.forEach(s => s.destroy());
     this.tileSprites = [];
 
-    const tileKeys = ['tile_grass', 'tile_wall', 'tile_tall_grass', 'tile_water', 'tile_exit'];
+    const tileKeys = ['tile_grass', 'tile_wall', 'tile_tall_grass', 'tile_water', 'tile_exit', 'tile_path', 'tile_flower'];
 
     for (let y = 0; y < this.currentMap.height; y++) {
       for (let x = 0; x < this.currentMap.width; x++) {
@@ -59,89 +58,108 @@ export class OverworldScene extends Phaser.Scene {
       }
     }
 
-    // Mark exits
     for (const exit of this.currentMap.exits) {
       const ex = this.add.image(exit.x * TILE_SIZE + TILE_SIZE / 2, exit.y * TILE_SIZE + TILE_SIZE / 2, 'tile_exit');
       ex.setDisplaySize(TILE_SIZE, TILE_SIZE);
       this.tileSprites.push(ex);
-      // Make exit tile walkable
       this.currentMap.tiles[exit.y][exit.x] = 4;
     }
   }
 
   private createPlayer(): void {
-    this.player = this.add.rectangle(
+    this.player = this.add.image(
       this.playerTileX * TILE_SIZE + TILE_SIZE / 2,
       this.playerTileY * TILE_SIZE + TILE_SIZE / 2,
-      TILE_SIZE - 4,
-      TILE_SIZE - 4,
-      0x3399ff,
+      'player',
     );
+    this.player.setDisplaySize(TILE_SIZE - 4, TILE_SIZE - 4);
     this.player.setDepth(10);
 
-    // Camera follow
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.cameras.main.setZoom(2);
   }
 
   private createNpcs(): void {
     this.npcSprites.forEach(s => s.destroy());
-    this.npcLabels.forEach(s => s.destroy());
     this.npcSprites = [];
-    this.npcLabels = [];
 
     for (const npc of this.currentMap.npcs) {
-      const sprite = this.add.rectangle(
+      const container = this.add.container(
         npc.x * TILE_SIZE + TILE_SIZE / 2,
         npc.y * TILE_SIZE + TILE_SIZE / 2,
-        TILE_SIZE - 4,
-        TILE_SIZE - 4,
-        npc.team ? 0xcc3333 : 0x33cc66,
       );
-      sprite.setDepth(5);
-      this.npcSprites.push(sprite);
+      container.setDepth(5);
 
-      const label = this.add.text(
-        npc.x * TILE_SIZE + TILE_SIZE / 2,
-        npc.y * TILE_SIZE - 4,
-        npc.name,
-        { fontSize: '8px', color: '#ffffff', align: 'center' },
-      ).setOrigin(0.5, 1).setDepth(6);
-      this.npcLabels.push(label);
+      // NPC 角色精靈
+      let spriteKey = 'npc';
+      if (npc.npcType === 'trainer') spriteKey = 'npc';
+      const sprite = this.add.image(0, 0, spriteKey);
+      sprite.setDisplaySize(TILE_SIZE - 4, TILE_SIZE - 4);
+
+      // 根據 NPC 類型上色
+      if (npc.spriteColor) {
+        sprite.setTint(npc.spriteColor);
+      } else if (npc.npcType === 'trainer') {
+        sprite.setTint(0xff6644);
+      } else if (npc.npcType === 'healer') {
+        sprite.setTint(0x44ddaa);
+      } else if (npc.npcType === 'fusion') {
+        sprite.setTint(0xff8844);
+      }
+
+      container.add(sprite);
+
+      // NPC 名稱標籤
+      const label = this.add.text(0, -TILE_SIZE / 2 - 2, npc.name, {
+        fontSize: '7px', color: '#ffffff', align: 'center',
+        stroke: '#000000', strokeThickness: 2,
+      }).setOrigin(0.5, 1);
+      container.add(label);
+
+      // NPC 類型圖示
+      let icon = '';
+      if (npc.npcType === 'healer') icon = '♥';
+      else if (npc.npcType === 'fusion') icon = '⚗';
+      else if (npc.npcType === 'trainer') icon = '⚔';
+
+      if (icon) {
+        const iconText = this.add.text(TILE_SIZE / 2 - 4, -TILE_SIZE / 2 + 2, icon, {
+          fontSize: '8px', color: '#ffcc44',
+        }).setOrigin(0.5);
+        container.add(iconText);
+      }
+
+      this.npcSprites.push(container);
     }
   }
 
   private createUI(): void {
     this.mapNameText = this.add.text(10, 10, this.currentMap.name, {
-      fontSize: '14px',
-      fontFamily: 'serif',
-      color: '#ffcc44',
-      backgroundColor: '#000000aa',
-      padding: { x: 8, y: 4 },
+      fontSize: '14px', fontFamily: 'serif', color: '#ffcc44',
+      backgroundColor: '#000000aa', padding: { x: 8, y: 4 },
     }).setScrollFactor(0).setDepth(100);
 
     this.infoText = this.add.text(10, 34, '', {
-      fontSize: '10px',
-      color: '#aabbcc',
-      backgroundColor: '#000000aa',
-      padding: { x: 6, y: 3 },
+      fontSize: '10px', color: '#aabbcc',
+      backgroundColor: '#000000aa', padding: { x: 6, y: 3 },
     }).setScrollFactor(0).setDepth(100);
 
     this.updateInfoText();
 
-    // Menu hint
     this.add.text(this.scale.width - 10, 10, '[M]選單 [Z]互動', {
-      fontSize: '10px',
-      color: '#667788',
-      backgroundColor: '#000000aa',
-      padding: { x: 6, y: 3 },
+      fontSize: '10px', color: '#667788',
+      backgroundColor: '#000000aa', padding: { x: 6, y: 3 },
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
   }
 
   private updateInfoText(): void {
     const state = getState();
     const alive = state.team.filter(m => m.hp > 0).length;
-    this.infoText.setText(`隊伍：${alive}/${state.team.length}　圖鑑：${state.caughtIds.size}/10`);
+    const lead = state.team[0];
+    const cult = getCultivation(lead.level);
+    this.infoText.setText(
+      `${lead.nickname} ${cult.displayName}　隊伍：${alive}/${state.team.length}　圖鑑：${state.caughtIds.size}/10`
+    );
   }
 
   private setupInput(): void {
@@ -156,10 +174,7 @@ export class OverworldScene extends Phaser.Scene {
       M: this.input.keyboard.addKey('M'),
     };
 
-    // Z = interact
     this.wasd.Z.on('down', () => this.interact());
-
-    // M = menu (save/heal)
     this.wasd.M.on('down', () => this.showQuickMenu());
   }
 
@@ -180,18 +195,14 @@ export class OverworldScene extends Phaser.Scene {
     const newX = this.playerTileX + dx;
     const newY = this.playerTileY + dy;
 
-    // Bounds check
     if (newX < 0 || newY < 0 || newX >= this.currentMap.width || newY >= this.currentMap.height) return;
 
-    // Check for NPC blocking
     const npcAt = this.currentMap.npcs.find(n => n.x === newX && n.y === newY);
     if (npcAt) return;
 
     const tile = this.currentMap.tiles[newY][newX];
-    // Wall or water
     if (tile === 1 || tile === 3) return;
 
-    // Move
     this.isMoving = true;
     this.playerTileX = newX;
     this.playerTileY = newY;
@@ -217,7 +228,6 @@ export class OverworldScene extends Phaser.Scene {
   private checkTile(x: number, y: number): void {
     const tile = this.currentMap.tiles[y][x];
 
-    // Exit
     if (tile === 4) {
       const exit = this.currentMap.exits.find(e => e.x === x && e.y === y);
       if (exit) {
@@ -226,14 +236,12 @@ export class OverworldScene extends Phaser.Scene {
       }
     }
 
-    // Tall grass - random encounter with grace period
     if (tile === 2) {
       if (this.gracePeriod > 0) {
         this.gracePeriod--;
         return;
       }
       this.stepsSinceEncounter++;
-      // 遭遇率隨步數逐漸提高，前幾步幾乎不會遇到
       const baseRate = this.currentMap.encounterRate;
       const scaledRate = baseRate * Math.min(1, this.stepsSinceEncounter / 8);
       const roll = Math.random() * 100;
@@ -245,26 +253,20 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private triggerWildEncounter(): void {
-    const state = getState();
     if (getFirstAliveIndex() === -1) return;
 
-    // Pick random wild monster based on weights
     const totalWeight = this.currentMap.wildEncounters.reduce((sum, e) => sum + e.weight, 0);
     let roll = Math.random() * totalWeight;
     let encounter = this.currentMap.wildEncounters[0];
 
     for (const e of this.currentMap.wildEncounters) {
       roll -= e.weight;
-      if (roll <= 0) {
-        encounter = e;
-        break;
-      }
+      if (roll <= 0) { encounter = e; break; }
     }
 
     const level = encounter.minLevel + Math.floor(Math.random() * (encounter.maxLevel - encounter.minLevel + 1));
     const wildMonster = createMonsterInstance(encounter.monsterId, level);
 
-    // Flash effect
     this.cameras.main.flash(300, 255, 255, 255);
 
     this.time.delayedCall(300, () => {
@@ -272,7 +274,7 @@ export class OverworldScene extends Phaser.Scene {
         type: 'wild',
         enemies: [wildMonster],
         onEnd: () => {
-          this.gracePeriod = 8 + Math.floor(Math.random() * 5); // 戰鬥後 8~12 步免戰
+          this.gracePeriod = 8 + Math.floor(Math.random() * 5);
           this.stepsSinceEncounter = 0;
           this.updateInfoText();
         },
@@ -282,7 +284,6 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private interact(): void {
-    // Check adjacent tiles for NPCs
     const dirs = [
       { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
       { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
@@ -310,7 +311,85 @@ export class OverworldScene extends Phaser.Scene {
       }
 
       if (dialogueIndex >= npc.dialogue.length) {
-        // After dialogue, check for trainer battle
+        // 對話結束後執行功能
+        this.handleNpcAction(npc);
+        state.talkedNpcs.add(npc.id);
+        return;
+      }
+
+      const boxH = 60;
+      const camW = this.scale.width;
+      const camH = this.scale.height;
+
+      const container = this.add.container(0, 0);
+      container.setScrollFactor(0).setDepth(200);
+
+      const bg = this.add.rectangle(camW / 2, camH - boxH / 2 - 5, camW - 20, boxH, 0x000000, 0.85);
+      bg.setStrokeStyle(1, 0xffcc44);
+      container.add(bg);
+
+      const nameLabel = this.add.text(20, camH - boxH - 2, npc.name, {
+        fontSize: '11px', color: '#ffcc44', fontStyle: 'bold',
+      });
+      container.add(nameLabel);
+
+      // NPC 類型標籤
+      let typeTag = '';
+      if (npc.npcType === 'healer') typeTag = ' [治療]';
+      else if (npc.npcType === 'fusion') typeTag = ' [練妖壺]';
+      else if (npc.npcType === 'trainer') typeTag = ' [對戰]';
+      if (typeTag) {
+        const tag = this.add.text(camW - 25, camH - boxH - 2, typeTag, {
+          fontSize: '9px', color: '#88aacc',
+        }).setOrigin(1, 0);
+        container.add(tag);
+      }
+
+      const text = this.add.text(20, camH - boxH + 16, npc.dialogue[dialogueIndex], {
+        fontSize: '12px', color: '#ffffff',
+        wordWrap: { width: camW - 50 },
+      });
+      container.add(text);
+
+      const hint = this.add.text(camW - 25, camH - 15, '▼', {
+        fontSize: '10px', color: '#ffcc44',
+      });
+      container.add(hint);
+
+      this.dialogueBox = container;
+      dialogueIndex++;
+
+      const advance = () => {
+        if (!this.input.keyboard) return;
+        this.input.off('pointerdown', advance);
+        this.wasd.Z.off('down', advance);
+        showDialogue();
+      };
+
+      this.time.delayedCall(100, () => {
+        this.input.once('pointerdown', advance);
+        this.wasd.Z.once('down', advance);
+      });
+    };
+
+    showDialogue();
+  }
+
+  private handleNpcAction(npc: MapNpc): void {
+    const state = getState();
+
+    switch (npc.npcType) {
+      case 'healer':
+        healTeam();
+        this.updateInfoText();
+        this.showNotification('所有靈獸已完全恢復！', 0x44ff88);
+        break;
+
+      case 'fusion':
+        this.showFusionMenu();
+        break;
+
+      case 'trainer':
         if (npc.team && !state.defeatedTrainers.has(npc.id)) {
           const enemies = npc.team.map(t => createMonsterInstance(t.monsterId, t.level));
           this.cameras.main.flash(300, 255, 100, 100);
@@ -328,61 +407,185 @@ export class OverworldScene extends Phaser.Scene {
             });
             this.scene.pause();
           });
+        } else if (npc.team && state.defeatedTrainers.has(npc.id)) {
+          this.showNotification('你已經打敗過這個對手了。', 0xaabbcc);
         }
-        state.talkedNpcs.add(npc.id);
-        return;
+        break;
+    }
+  }
+
+  private showNotification(msg: string, color: number): void {
+    const camW = this.scale.width;
+    const text = this.add.text(camW / 2, 60, msg, {
+      fontSize: '13px', color: '#' + color.toString(16).padStart(6, '0'),
+      backgroundColor: '#000000cc', padding: { x: 10, y: 6 },
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(300);
+
+    this.tweens.add({
+      targets: text,
+      alpha: 0, y: 40,
+      duration: 1500, delay: 800,
+      onComplete: () => text.destroy(),
+    });
+  }
+
+  // ═══════════════════════════════════
+  //  練妖壺 融合介面
+  // ═══════════════════════════════════
+  private showFusionMenu(): void {
+    const state = getState();
+    if (state.team.length < 2) {
+      this.showNotification('需要至少兩隻靈獸才能融合！', 0xff4444);
+      return;
+    }
+
+    const camW = this.scale.width;
+    const camH = this.scale.height;
+
+    const container = this.add.container(0, 0);
+    container.setScrollFactor(0).setDepth(200);
+
+    const bg = this.add.rectangle(camW / 2, camH / 2, camW - 10, camH - 10, 0x0a0a1a, 0.95);
+    bg.setStrokeStyle(2, 0xff8844);
+    container.add(bg);
+
+    container.add(this.add.text(camW / 2, 15, '— 練 妖 壺 —', {
+      fontSize: '14px', fontFamily: 'serif', color: '#ff8844',
+    }).setOrigin(0.5));
+
+    container.add(this.add.text(camW / 2, 32, '選擇兩隻靈獸進行融合（將被消耗）', {
+      fontSize: '9px', color: '#aa8866',
+    }).setOrigin(0.5));
+
+    let selectedA: number | null = null;
+    let selectedB: number | null = null;
+    const buttons: Phaser.GameObjects.Text[] = [];
+
+    const updateSelection = () => {
+      buttons.forEach((btn, i) => {
+        if (i === selectedA) btn.setColor('#ff8844');
+        else if (i === selectedB) btn.setColor('#44aaff');
+        else btn.setColor('#ffffff');
+      });
+
+      if (selectedA !== null && selectedB !== null) {
+        fuseBtn.setColor('#ffcc44').setInteractive({ useHandCursor: true });
+      } else {
+        fuseBtn.setColor('#555555').removeInteractive();
       }
-
-      const boxH = 60;
-      const camW = this.scale.width;
-      const camH = this.scale.height;
-
-      const container = this.add.container(0, 0);
-      container.setScrollFactor(0);
-      container.setDepth(200);
-
-      const bg = this.add.rectangle(camW / 2, camH - boxH / 2 - 5, camW - 20, boxH, 0x000000, 0.85);
-      bg.setStrokeStyle(1, 0xffcc44);
-      container.add(bg);
-
-      const nameLabel = this.add.text(20, camH - boxH - 2, npc.name, {
-        fontSize: '11px',
-        color: '#ffcc44',
-        fontStyle: 'bold',
-      });
-      container.add(nameLabel);
-
-      const text = this.add.text(20, camH - boxH + 16, npc.dialogue[dialogueIndex], {
-        fontSize: '12px',
-        color: '#ffffff',
-        wordWrap: { width: camW - 50 },
-      });
-      container.add(text);
-
-      const hint = this.add.text(camW - 25, camH - 15, '▼', {
-        fontSize: '10px',
-        color: '#ffcc44',
-      });
-      container.add(hint);
-
-      this.dialogueBox = container;
-      dialogueIndex++;
-
-      // Click or Z to advance
-      const advance = () => {
-        if (!this.input.keyboard) return;
-        this.input.off('pointerdown', advance);
-        this.wasd.Z.off('down', advance);
-        showDialogue();
-      };
-
-      this.time.delayedCall(100, () => {
-        this.input.once('pointerdown', advance);
-        this.wasd.Z.once('down', advance);
-      });
     };
 
-    showDialogue();
+    state.team.forEach((m, i) => {
+      const y = 48 + i * 22;
+      const cult = getCultivation(m.level);
+      const shinyTag = m.isShiny ? '✦' : '';
+      const fusedTag = m.isFused ? '融' : '';
+      const info = `${shinyTag}${fusedTag}${m.nickname} ${cult.displayName} HP:${m.hp}/${m.maxHp} 攻:${m.atk}`;
+      const btn = this.add.text(15, y, info, { fontSize: '10px', color: '#ffffff' })
+        .setInteractive({ useHandCursor: true });
+
+      btn.on('pointerdown', () => {
+        if (selectedA === i) { selectedA = null; }
+        else if (selectedB === i) { selectedB = null; }
+        else if (selectedA === null) { selectedA = i; }
+        else if (selectedB === null) { selectedB = i; }
+        else { selectedB = i; }
+        updateSelection();
+      });
+
+      buttons.push(btn);
+      container.add(btn);
+    });
+
+    // 融合按鈕
+    const fuseBtn = this.add.text(camW / 2, camH - 40, '【 融 合 】', {
+      fontSize: '14px', color: '#555555', fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    fuseBtn.on('pointerdown', () => {
+      if (selectedA === null || selectedB === null) return;
+      const monA = state.team[selectedA];
+      const monB = state.team[selectedB];
+
+      // 執行融合
+      const result = fuseMonsters(monA, monB);
+
+      // 移除素材（先移除較大 index）
+      const [hi, lo] = selectedA > selectedB ? [selectedA, selectedB] : [selectedB, selectedA];
+      state.team.splice(hi, 1);
+      state.team.splice(lo, 1);
+
+      // 加入融合結果
+      state.team.push(result);
+      state.caughtIds.add(result.templateId);
+
+      container.destroy();
+      this.dialogueBox = null;
+      this.updateInfoText();
+
+      // 融合結果通知
+      const shinyMsg = result.isShiny ? '\n恭喜！煉出了異色珍品！' : '';
+      this.showFusionResult(result, shinyMsg);
+    });
+
+    container.add(fuseBtn);
+
+    const closeBtn = this.add.text(camW / 2, camH - 18, '取消', {
+      fontSize: '11px', color: '#889999',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
+    container.add(closeBtn);
+
+    this.dialogueBox = container;
+  }
+
+  private showFusionResult(monster: MonsterInstance, extraMsg: string): void {
+    const camW = this.scale.width;
+    const camH = this.scale.height;
+
+    const container = this.add.container(0, 0);
+    container.setScrollFactor(0).setDepth(200);
+
+    const bg = this.add.rectangle(camW / 2, camH / 2, camW - 30, 160, 0x0a0a1a, 0.95);
+    bg.setStrokeStyle(2, monster.isShiny ? 0xffcc44 : 0xff8844);
+    container.add(bg);
+
+    container.add(this.add.text(camW / 2, camH / 2 - 60, '融合成功！', {
+      fontSize: '16px', color: '#ff8844', fontStyle: 'bold',
+    }).setOrigin(0.5));
+
+    // 靈獸圖片
+    const sprite = this.add.image(camW / 2, camH / 2 - 20, `monster_${monster.templateId}`);
+    sprite.setDisplaySize(48, 48);
+    if (monster.isShiny) sprite.setTint(0xffdd88);
+    container.add(sprite);
+
+    const cult = getCultivation(monster.level);
+    const info = `${monster.nickname} ${cult.displayName}\nHP:${monster.maxHp} 攻:${monster.atk} 防:${monster.def} 速:${monster.spd}`;
+    container.add(this.add.text(camW / 2, camH / 2 + 20, info, {
+      fontSize: '11px', color: '#ffffff', align: 'center',
+    }).setOrigin(0.5));
+
+    const skills = monster.skills.map(s => s.skill.name).join('、');
+    container.add(this.add.text(camW / 2, camH / 2 + 48, `技能：${skills}`, {
+      fontSize: '9px', color: '#aabbcc', align: 'center',
+      wordWrap: { width: camW - 60 },
+    }).setOrigin(0.5));
+
+    if (extraMsg) {
+      container.add(this.add.text(camW / 2, camH / 2 + 65, extraMsg, {
+        fontSize: '11px', color: '#ffcc44', fontStyle: 'bold',
+      }).setOrigin(0.5));
+    }
+
+    const closeBtn = this.add.text(camW / 2, camH / 2 + 82, '確認', {
+      fontSize: '12px', color: '#ffcc44',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
+    container.add(closeBtn);
+
+    this.dialogueBox = container;
   }
 
   private transitionToMap(mapId: string, targetX: number, targetY: number): void {
@@ -397,6 +600,9 @@ export class OverworldScene extends Phaser.Scene {
     });
   }
 
+  // ═══════════════════════════════════
+  //  選單系統
+  // ═══════════════════════════════════
   private showQuickMenu(): void {
     if (this.dialogueBox) return;
 
@@ -404,30 +610,27 @@ export class OverworldScene extends Phaser.Scene {
     const camH = this.scale.height;
 
     const container = this.add.container(0, 0);
-    container.setScrollFactor(0);
-    container.setDepth(200);
+    container.setScrollFactor(0).setDepth(200);
 
-    const bg = this.add.rectangle(camW / 2, camH / 2, 200, 180, 0x0a0a1a, 0.95);
+    const bg = this.add.rectangle(camW / 2, camH / 2, 220, 200, 0x0a0a1a, 0.95);
     bg.setStrokeStyle(2, 0xffcc44);
     container.add(bg);
 
-    const title = this.add.text(camW / 2, camH / 2 - 70, '— 選 單 —', {
+    container.add(this.add.text(camW / 2, camH / 2 - 80, '— 選 單 —', {
       fontSize: '16px', fontFamily: 'serif', color: '#ffcc44',
-    }).setOrigin(0.5);
-    container.add(title);
+    }).setOrigin(0.5));
 
-    const state = getState();
     const options = [
-      { text: '隊伍狀態', action: () => this.showTeamStatus(container) },
-      { text: '靈獸圖鑑', action: () => this.showPokedex(container) },
-      { text: '回復全隊', action: () => { healTeam(); this.updateInfoText(); closeMenu(); } },
-      { text: '儲存遊戲', action: () => { saveGame(); closeMenu(); } },
-      { text: '關閉', action: () => closeMenu() },
+      { text: '📋 靈獸背包', action: () => this.showBackpack(container) },
+      { text: '📖 靈獸圖鑑', action: () => this.showPokedex(container) },
+      { text: '♥ 回復全隊', action: () => { healTeam(); this.updateInfoText(); closeMenu(); this.showNotification('全隊已恢復！', 0x44ff88); } },
+      { text: '💾 儲存遊戲', action: () => { saveGame(); closeMenu(); this.showNotification('遊戲已儲存！', 0x44aaff); } },
+      { text: '✕ 關閉', action: () => closeMenu() },
     ];
 
     options.forEach((opt, i) => {
-      const btn = this.add.text(camW / 2, camH / 2 - 35 + i * 28, opt.text, {
-        fontSize: '14px', color: '#ffffff',
+      const btn = this.add.text(camW / 2, camH / 2 - 42 + i * 28, opt.text, {
+        fontSize: '13px', color: '#ffffff',
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       btn.on('pointerover', () => btn.setColor('#ffcc44'));
       btn.on('pointerout', () => btn.setColor('#ffffff'));
@@ -443,7 +646,10 @@ export class OverworldScene extends Phaser.Scene {
     };
   }
 
-  private showTeamStatus(parentContainer: Phaser.GameObjects.Container): void {
+  // ═══════════════════════════════════
+  //  靈獸背包 (詳細養成資訊)
+  // ═══════════════════════════════════
+  private showBackpack(parentContainer: Phaser.GameObjects.Container): void {
     parentContainer.destroy();
     this.dialogueBox = null;
 
@@ -452,25 +658,77 @@ export class OverworldScene extends Phaser.Scene {
     const camH = this.scale.height;
 
     const container = this.add.container(0, 0);
-    container.setScrollFactor(0);
-    container.setDepth(200);
+    container.setScrollFactor(0).setDepth(200);
 
-    const bg = this.add.rectangle(camW / 2, camH / 2, camW - 20, camH - 20, 0x0a0a1a, 0.95);
+    const bg = this.add.rectangle(camW / 2, camH / 2, camW - 10, camH - 10, 0x0a0a1a, 0.95);
     bg.setStrokeStyle(2, 0xffcc44);
     container.add(bg);
 
-    container.add(this.add.text(camW / 2, 18, '— 隊 伍 —', {
-      fontSize: '14px', fontFamily: 'serif', color: '#ffcc44',
+    container.add(this.add.text(camW / 2, 12, '— 靈 獸 背 包 —', {
+      fontSize: '13px', fontFamily: 'serif', color: '#ffcc44',
     }).setOrigin(0.5));
 
+    // 顯示每隻靈獸
     state.team.forEach((m, i) => {
-      const y = 40 + i * 30;
-      const color = m.hp > 0 ? '#ffffff' : '#ff4444';
-      const info = `${m.nickname} Lv.${m.level}　HP:${m.hp}/${m.maxHp}　攻:${m.atk} 防:${m.def} 速:${m.spd}`;
-      container.add(this.add.text(20, y, info, { fontSize: '11px', color }));
+      const startY = 28 + i * 36;
+      const cult = getCultivation(m.level);
+      const hpColor = m.hp > 0 ? '#ffffff' : '#ff4444';
+
+      // 靈獸小圖
+      const sprite = this.add.image(22, startY + 10, `monster_${m.templateId}`);
+      sprite.setDisplaySize(24, 24);
+      if (m.isShiny) sprite.setTint(0xffdd88);
+      container.add(sprite);
+
+      // 名稱 + 境界
+      const shinyTag = m.isShiny ? '✦' : '';
+      const fusedTag = m.isFused ? '[融]' : '';
+      container.add(this.add.text(38, startY, `${shinyTag}${fusedTag}${m.nickname}`, {
+        fontSize: '10px', color: hpColor, fontStyle: 'bold',
+      }));
+
+      container.add(this.add.text(38, startY + 12, `${cult.displayName}`, {
+        fontSize: '9px', color: cult.color,
+      }));
+
+      // 素質
+      container.add(this.add.text(camW / 2 + 10, startY, `HP:${m.hp}/${m.maxHp}`, {
+        fontSize: '9px', color: hpColor,
+      }));
+      container.add(this.add.text(camW / 2 + 10, startY + 11, `攻:${m.atk} 防:${m.def} 速:${m.spd}`, {
+        fontSize: '8px', color: '#889999',
+      }));
+
+      // 經驗值
+      const expNeeded = m.level <= 30 ? m.level * 40 + 20 : m.level * 80;
+      container.add(this.add.text(camW / 2 + 10, startY + 22, `EXP:${m.exp}/${expNeeded}`, {
+        fontSize: '8px', color: '#667788',
+      }));
+
+      // 點擊查看技能詳情
+      const detailBtn = this.add.text(camW - 20, startY + 10, '▶', {
+        fontSize: '12px', color: '#667788',
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      detailBtn.on('pointerdown', () => this.showMonsterDetail(container, m));
+      container.add(detailBtn);
     });
 
-    const closeBtn = this.add.text(camW / 2, camH - 20, '關閉', {
+    // 倉庫
+    if (state.storage.length > 0) {
+      const storageY = 28 + state.team.length * 36 + 5;
+      container.add(this.add.text(10, storageY, `倉庫 (${state.storage.length})`, {
+        fontSize: '9px', color: '#667788',
+      }));
+      state.storage.forEach((m, i) => {
+        const y = storageY + 14 + i * 14;
+        const cult = getCultivation(m.level);
+        container.add(this.add.text(15, y, `${m.nickname} ${cult.displayName}`, {
+          fontSize: '8px', color: '#556677',
+        }));
+      });
+    }
+
+    const closeBtn = this.add.text(camW / 2, camH - 15, '關閉', {
       fontSize: '12px', color: '#ffcc44',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
@@ -479,6 +737,106 @@ export class OverworldScene extends Phaser.Scene {
     this.dialogueBox = container;
   }
 
+  private showMonsterDetail(parentContainer: Phaser.GameObjects.Container, m: MonsterInstance): void {
+    parentContainer.destroy();
+    this.dialogueBox = null;
+
+    const camW = this.scale.width;
+    const camH = this.scale.height;
+
+    const container = this.add.container(0, 0);
+    container.setScrollFactor(0).setDepth(200);
+
+    const bg = this.add.rectangle(camW / 2, camH / 2, camW - 10, camH - 10, 0x0a0a1a, 0.95);
+    bg.setStrokeStyle(2, 0xffcc44);
+    container.add(bg);
+
+    const cult = getCultivation(m.level);
+
+    // 靈獸大圖
+    const sprite = this.add.image(camW / 2, 55, `monster_${m.templateId}`);
+    sprite.setDisplaySize(64, 64);
+    if (m.isShiny) sprite.setTint(0xffdd88);
+    container.add(sprite);
+
+    // 境界光環 (根據境界等級)
+    if (cult.realmIndex >= 1) {
+      const aura = this.add.circle(camW / 2, 55, 36 + cult.realmIndex * 3, parseInt(cult.color.replace('#', '0x')), 0.15);
+      aura.setStrokeStyle(1, parseInt(cult.color.replace('#', '0x')));
+      container.add(aura);
+    }
+
+    // 名稱
+    const shinyTag = m.isShiny ? '✦ ' : '';
+    const fusedTag = m.isFused ? '[融] ' : '';
+    container.add(this.add.text(camW / 2, 95, `${shinyTag}${fusedTag}${m.nickname}`, {
+      fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
+    }).setOrigin(0.5));
+
+    // 境界
+    container.add(this.add.text(camW / 2, 112, cult.displayName, {
+      fontSize: '12px', color: cult.color,
+    }).setOrigin(0.5));
+
+    // 素質
+    const statsText = `HP: ${m.hp}/${m.maxHp}　攻擊: ${m.atk}　防禦: ${m.def}　速度: ${m.spd}`;
+    container.add(this.add.text(camW / 2, 130, statsText, {
+      fontSize: '9px', color: '#aabbcc',
+    }).setOrigin(0.5));
+
+    // 經驗值
+    const expNeeded = m.level <= 30 ? m.level * 40 + 20 : m.level * 80;
+    container.add(this.add.text(camW / 2, 145, `經驗值: ${m.exp}/${expNeeded}`, {
+      fontSize: '9px', color: '#667788',
+    }).setOrigin(0.5));
+
+    // 技能列表
+    container.add(this.add.text(15, 162, '— 技 能 —', {
+      fontSize: '10px', color: '#ffcc44',
+    }));
+
+    m.skills.forEach((s, i) => {
+      const y = 178 + i * 20;
+      const effectTag = s.skill.effect ? this.getEffectLabel(s.skill) : '';
+      container.add(this.add.text(15, y, `${s.skill.name} (${s.skill.element})`, {
+        fontSize: '10px', color: '#ffffff',
+      }));
+      container.add(this.add.text(camW - 15, y, `威力:${s.skill.power} 命中:${s.skill.accuracy} PP:${s.currentPp}/${s.skill.pp} ${effectTag}`, {
+        fontSize: '8px', color: '#889999',
+      }).setOrigin(1, 0));
+    });
+
+    const backBtn = this.add.text(camW / 2, camH - 15, '← 返回', {
+      fontSize: '12px', color: '#ffcc44',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    backBtn.on('pointerdown', () => {
+      container.destroy();
+      this.dialogueBox = null;
+      // Re-open backpack
+      const dummyContainer = this.add.container(0, 0);
+      this.showBackpack(dummyContainer);
+    });
+    container.add(backBtn);
+
+    this.dialogueBox = container;
+  }
+
+  private getEffectLabel(skill: { effect?: { type: string } }): string {
+    if (!skill.effect) return '';
+    switch (skill.effect.type) {
+      case 'heal': return '[回復]';
+      case 'drain': return '[吸血]';
+      case 'recoil': return '[反傷]';
+      case 'statUp': return '[增益]';
+      case 'statDown': return '[減益]';
+      case 'priority': return '[先制]';
+      default: return '';
+    }
+  }
+
+  // ═══════════════════════════════════
+  //  圖鑑
+  // ═══════════════════════════════════
   private showPokedex(parentContainer: Phaser.GameObjects.Container): void {
     parentContainer.destroy();
     this.dialogueBox = null;
@@ -488,26 +846,41 @@ export class OverworldScene extends Phaser.Scene {
     const camH = this.scale.height;
 
     const container = this.add.container(0, 0);
-    container.setScrollFactor(0);
-    container.setDepth(200);
+    container.setScrollFactor(0).setDepth(200);
 
-    const bg = this.add.rectangle(camW / 2, camH / 2, camW - 20, camH - 20, 0x0a0a1a, 0.95);
+    const bg = this.add.rectangle(camW / 2, camH / 2, camW - 10, camH - 10, 0x0a0a1a, 0.95);
     bg.setStrokeStyle(2, 0xffcc44);
     container.add(bg);
 
-    container.add(this.add.text(camW / 2, 18, `— 靈獸圖鑑 ${state.caughtIds.size}/10 —`, {
-      fontSize: '14px', fontFamily: 'serif', color: '#ffcc44',
+    container.add(this.add.text(camW / 2, 15, `— 靈獸圖鑑 ${state.caughtIds.size}/10 —`, {
+      fontSize: '13px', fontFamily: 'serif', color: '#ffcc44',
     }).setOrigin(0.5));
 
     MONSTERS.forEach((m, i) => {
-      const y = 40 + i * 22;
+      const y = 35 + i * 22;
       const caught = state.caughtIds.has(m.id);
-      const text = caught ? `${m.name}　${m.element}　${m.description}` : '？？？';
-      const color = caught ? '#ffffff' : '#445566';
-      container.add(this.add.text(20, y, text, { fontSize: '10px', color }));
+
+      if (caught) {
+        // 靈獸小圖
+        const sprite = this.add.image(18, y + 5, `monster_${m.id}`);
+        sprite.setDisplaySize(16, 16);
+        container.add(sprite);
+
+        container.add(this.add.text(30, y, `${m.name}　${m.element}`, {
+          fontSize: '10px', color: '#ffffff',
+        }));
+        container.add(this.add.text(30, y + 11, m.description, {
+          fontSize: '8px', color: '#667788',
+          wordWrap: { width: camW - 60 },
+        }));
+      } else {
+        container.add(this.add.text(30, y + 3, '？？？', {
+          fontSize: '10px', color: '#334455',
+        }));
+      }
     });
 
-    const closeBtn = this.add.text(camW / 2, camH - 20, '關閉', {
+    const closeBtn = this.add.text(camW / 2, camH - 15, '關閉', {
       fontSize: '12px', color: '#ffcc44',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });

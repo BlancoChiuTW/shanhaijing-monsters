@@ -82,6 +82,17 @@ export function loadGame(): PlayerState | null {
     defeatedTrainers: new Set(data.defeatedTrainers),
     talkedNpcs: new Set(data.talkedNpcs),
   };
+  // 舊存檔相容：補上新欄位
+  for (const m of state.team) {
+    if (m.atkStage === undefined) m.atkStage = 0;
+    if (m.defStage === undefined) m.defStage = 0;
+    if (m.spdStage === undefined) m.spdStage = 0;
+  }
+  for (const m of state.storage) {
+    if (m.atkStage === undefined) m.atkStage = 0;
+    if (m.defStage === undefined) m.defStage = 0;
+    if (m.spdStage === undefined) m.spdStage = 0;
+  }
   return state;
 }
 

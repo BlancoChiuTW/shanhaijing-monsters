@@ -67,7 +67,7 @@ export class MainMenuScene extends Phaser.Scene {
     }
 
     // Credits
-    this.add.text(width / 2, height - 30, 'v0.1 Demo — BlancoChiuTW', {
+    this.add.text(width / 2, height - 30, 'v0.2 Demo — BlancoChiuTW', {
       fontSize: '12px',
       color: '#445566',
     }).setOrigin(0.5);

@@ -1,19 +1,15 @@
-import { type MonsterInstance, type Skill, getTemplate, getTypeMultiplier, getStatStageMul, checkNewSkills } from '../data/monsters';
+import { type MonsterInstance, type Skill, getTemplate, getTypeMultiplier, getStatStageMul, checkNewSkills, getBaseStats, calcStats } from '../data/monsters';
 
-export interface BattleAction {
-  type: 'skill' | 'catch' | 'switch' | 'run';
-  skillIndex?: number;
-  switchIndex?: number;
-}
+export { calcStats };
 
 export interface BattleResult {
   damage: number;
   message: string;
-  effectiveness: string; // 'normal' | 'effective' | 'weak'
+  effectiveness: string;
   isCrit: boolean;
-  drainHeal: number;     // 吸血回復量
-  recoilDmg: number;     // 反傷量
-  statMsg: string;        // 能力變化訊息
+  drainHeal: number;
+  recoilDmg: number;
+  statMsg: string;
 }
 
 export function calculateDamage(attacker: MonsterInstance, defender: MonsterInstance, skill: Skill): BattleResult {
@@ -21,21 +17,14 @@ export function calculateDamage(attacker: MonsterInstance, defender: MonsterInst
   const defTemplate = getTemplate(defender.templateId);
   const typeMultiplier = getTypeMultiplier(skill.element, defTemplate.element);
 
-  // STAB bonus
   const stab = skill.element === atkTemplate.element ? 1.3 : 1.0;
-
-  // Critical hit (6.25% chance, 1.5x)
   const isCrit = Math.random() < 0.0625;
   const critMul = isCrit ? 1.5 : 1.0;
-
-  // Random factor
   const random = 0.85 + Math.random() * 0.15;
 
-  // 套用能力等級倍率
   const atkStat = attacker.atk * getStatStageMul(attacker.atkStage);
   const defStat = defender.def * getStatStageMul(defender.defStage);
 
-  // Base damage formula
   const baseDamage = ((2 * attacker.level / 5 + 2) * skill.power * (atkStat / defStat)) / 50 + 2;
   const finalDamage = Math.max(1, Math.floor(baseDamage * typeMultiplier * stab * critMul * random));
 
@@ -46,7 +35,6 @@ export function calculateDamage(attacker: MonsterInstance, defender: MonsterInst
 
   const critMsg = isCrit ? '會心一擊！' : '';
 
-  // 處理技能效果
   let drainHeal = 0;
   let recoilDmg = 0;
   let statMsg = '';
@@ -82,14 +70,11 @@ export function calculateDamage(attacker: MonsterInstance, defender: MonsterInst
   }
 
   const message = `${attacker.nickname} 使用了 ${skill.name}！${effMsg}${critMsg} 造成 ${finalDamage} 點傷害！`;
-
   return { damage: finalDamage, message, effectiveness, isCrit, drainHeal, recoilDmg, statMsg };
 }
 
-/** 處理 power=0 的輔助技能效果，回傳訊息 */
 export function applyBuffSkill(user: MonsterInstance, target: MonsterInstance, skill: Skill): string {
   if (!skill.effect) {
-    // 無效果的 power=0 技能 fallback 為回復
     const healAmount = Math.floor(user.maxHp * 0.3);
     user.hp = Math.min(user.maxHp, user.hp + healAmount);
     return `${user.nickname} 使用了 ${skill.name}！恢復了 ${healAmount} HP！`;
@@ -137,30 +122,41 @@ export function calculateCatchRate(monster: MonsterInstance): boolean {
 }
 
 export function getExpReward(defeated: MonsterInstance): number {
-  return Math.floor(defeated.level * 15 + 20);
+  return Math.floor(defeated.level * 12 + 15);
 }
 
-export function applyExp(monster: MonsterInstance, exp: number): { leveled: boolean; newLevel: number; newSkills: string[] } {
-  monster.exp += exp;
-  const expNeeded = monster.level * 50;
-  if (monster.exp >= expNeeded) {
-    monster.exp -= expNeeded;
-    monster.level++;
-    // Recalculate stats
-    const template = getTemplate(monster.templateId);
-    const lvlMul = 1 + (monster.level - 1) * 0.08;
-    const oldMaxHp = monster.maxHp;
-    monster.maxHp = Math.floor(template.baseHp * lvlMul);
-    monster.hp += monster.maxHp - oldMaxHp;
-    monster.atk = Math.floor(template.baseAtk * lvlMul);
-    monster.def = Math.floor(template.baseDef * lvlMul);
-    monster.spd = Math.floor(template.baseSpd * lvlMul);
+export function applyExp(monster: MonsterInstance, exp: number): { leveled: boolean; newLevel: number; newSkills: string[]; realmUp: boolean } {
+  if (monster.level >= 42) return { leveled: false, newLevel: monster.level, newSkills: [], realmUp: false };
 
-    // 檢查新技能
+  monster.exp += exp;
+  // 經驗曲線：前30級較快，後12級較慢
+  const expNeeded = monster.level <= 30
+    ? monster.level * 40 + 20
+    : monster.level * 80;
+
+  if (monster.exp >= expNeeded) {
+    const oldLevel = monster.level;
+    monster.exp -= expNeeded;
+    monster.level = Math.min(42, monster.level + 1);
+
+    // 重算素質
+    const base = getBaseStats(monster);
+    const stats = calcStats(base.hp, base.atk, base.def, base.spd, monster.level);
+    const oldMaxHp = monster.maxHp;
+    monster.maxHp = stats.maxHp;
+    monster.hp += monster.maxHp - oldMaxHp;
+    monster.atk = stats.atk;
+    monster.def = stats.def;
+    monster.spd = stats.spd;
+
+    // 境界突破判定
+    const realmBoundaries = [10, 20, 30, 34, 38];
+    const realmUp = realmBoundaries.includes(oldLevel);
+
     const newSkills = checkNewSkills(monster);
-    return { leveled: true, newLevel: monster.level, newSkills };
+    return { leveled: true, newLevel: monster.level, newSkills, realmUp };
   }
-  return { leveled: false, newLevel: monster.level, newSkills: [] };
+  return { leveled: false, newLevel: monster.level, newSkills: [], realmUp: false };
 }
 
 export function enemyChooseAction(monster: MonsterInstance): number {
@@ -169,7 +165,6 @@ export function enemyChooseAction(monster: MonsterInstance): number {
     .filter(s => s.currentPp > 0);
   if (available.length === 0) return 0;
 
-  // 簡單 AI：偏好高威力技能 (70%機率選最強招)
   if (Math.random() < 0.7) {
     const sorted = [...available].sort((a, b) => b.skill.power - a.skill.power);
     return sorted[0].index;
@@ -187,7 +182,6 @@ export function healMonster(monster: MonsterInstance): void {
   }
 }
 
-/** 重置戰鬥中的能力等級 */
 export function resetStatStages(monster: MonsterInstance): void {
   monster.atkStage = 0;
   monster.defStage = 0;

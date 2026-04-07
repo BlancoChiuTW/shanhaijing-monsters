@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { type MonsterInstance, type Skill, type Element, getTemplate, getStatStageMul } from '../data/monsters';
+import { type MonsterInstance, type Skill, type Element, getTemplate, getStatStageMul, getCultivation } from '../data/monsters';
 import { calculateDamage, calculateCatchRate, getExpReward, applyExp, applyBuffSkill, enemyChooseAction, resetStatStages } from '../utils/battle';
 import { getState, addMonsterToTeam, getFirstAliveIndex } from '../utils/gameState';
 
@@ -93,12 +93,14 @@ export class BattleScene extends Phaser.Scene {
     this.enemySpriteOriginY = height * 0.25;
     this.enemySprite = this.add.image(this.enemySpriteOriginX, this.enemySpriteOriginY, `monster_${this.enemyMonster.templateId}`);
     this.enemySprite.setDisplaySize(100, 100);
+    this.applyRealmVisual(this.enemySprite, this.enemyMonster);
 
     // Player monster (bottom left)
     this.playerSpriteOriginX = width * 0.3;
     this.playerSpriteOriginY = height * 0.5;
     this.playerSprite = this.add.image(this.playerSpriteOriginX, this.playerSpriteOriginY, `monster_${this.playerMonster.templateId}`);
     this.playerSprite.setDisplaySize(120, 120);
+    this.applyRealmVisual(this.playerSprite, this.playerMonster);
 
     // Enemy info panel
     this.add.rectangle(width * 0.25, 30, 200, 50, 0x000000, 0.7).setStrokeStyle(1, 0x445566);
@@ -127,15 +129,19 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private updateInfoPanels(): void {
-    // 顯示能力變化指示
     const pStages = this.formatStages(this.playerMonster);
     const eStages = this.formatStages(this.enemyMonster);
+    const pCult = getCultivation(this.playerMonster.level);
+    const eCult = getCultivation(this.enemyMonster.level);
+
+    const pShiny = this.playerMonster.isShiny ? '✦' : '';
+    const eShiny = this.enemyMonster.isShiny ? '✦' : '';
 
     this.enemyInfoText.setText(
-      `${this.enemyMonster.nickname} Lv.${this.enemyMonster.level}  HP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}${eStages}`
+      `${eShiny}${this.enemyMonster.nickname} ${eCult.displayName}\nHP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}${eStages}`
     );
     this.playerInfoText.setText(
-      `${this.playerMonster.nickname} Lv.${this.playerMonster.level}  HP:${this.playerMonster.hp}/${this.playerMonster.maxHp}${pStages}`
+      `${pShiny}${this.playerMonster.nickname} ${pCult.displayName}\nHP:${this.playerMonster.hp}/${this.playerMonster.maxHp}${pStages}`
     );
 
     const enemyRatio = Math.max(0, this.enemyMonster.hp / this.enemyMonster.maxHp);
@@ -636,7 +642,11 @@ export class BattleScene extends Phaser.Scene {
 
         let msg = `${this.enemyMonster.nickname} 被打倒了！獲得 ${exp} 經驗值。`;
         if (levelResult.leveled) {
-          msg += `\n${this.playerMonster.nickname} 升級到了 Lv.${levelResult.newLevel}！`;
+          const newCult = getCultivation(levelResult.newLevel);
+          msg += `\n${this.playerMonster.nickname} 突破至 ${newCult.displayName}！`;
+          if (levelResult.realmUp) {
+            msg += `\n【境界突破！進入${newCult.realm}境！】`;
+          }
           if (levelResult.newSkills.length > 0) {
             msg += `\n學會了新技能：${levelResult.newSkills.join('、')}！`;
           }
@@ -824,6 +834,65 @@ export class BattleScene extends Phaser.Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showActions());
     this.skillButtons.push(back);
+  }
+
+  /** 根據修仙境界套用視覺效果 */
+  private applyRealmVisual(sprite: Phaser.GameObjects.Image, monster: MonsterInstance): void {
+    const cult = getCultivation(monster.level);
+    const ri = cult.realmIndex;
+
+    // 異色特殊 tint
+    if (monster.isShiny) {
+      sprite.setTint(0xffdd88);
+    }
+
+    // 境界越高，體型越大
+    const baseSize = sprite === this.playerSprite ? 120 : 100;
+    const sizeBonus = ri * 5; // 每個境界+5px
+    sprite.setDisplaySize(baseSize + sizeBonus, baseSize + sizeBonus);
+
+    // 境界 >= 2 (金丹)：添加光環
+    if (ri >= 2) {
+      const auraColor = parseInt(cult.color.replace('#', ''), 16);
+      const aura = this.add.circle(sprite.x, sprite.y, (baseSize + sizeBonus) / 2 + 8, auraColor, 0.1);
+      aura.setStrokeStyle(1, auraColor);
+      aura.setDepth(sprite.depth - 1);
+
+      // 脈動動畫
+      this.tweens.add({
+        targets: aura,
+        scale: 1.15,
+        alpha: 0.05,
+        duration: 1500,
+        yoyo: true,
+        repeat: -1,
+      });
+    }
+
+    // 境界 >= 4 (化神)：粒子效果
+    if (ri >= 3) {
+      const auraColor = parseInt(cult.color.replace('#', ''), 16);
+      this.time.addEvent({
+        delay: 800,
+        loop: true,
+        callback: () => {
+          if (!sprite.active) return;
+          const particle = this.add.circle(
+            sprite.x + (Math.random() - 0.5) * 40,
+            sprite.y + 20,
+            2 + Math.random() * 2,
+            auraColor, 0.6,
+          ).setDepth(sprite.depth + 1);
+          this.tweens.add({
+            targets: particle,
+            y: particle.y - 40 - Math.random() * 20,
+            alpha: 0,
+            duration: 1000,
+            onComplete: () => particle.destroy(),
+          });
+        },
+      });
+    }
   }
 
   private endBattle(): void {
