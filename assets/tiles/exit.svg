@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#3a7a3a"/>
+  <!-- 階梯 -->
+  <rect x="4" y="24" width="24" height="6" fill="#887766" stroke="#665544" stroke-width="0.5"/>
+  <rect x="6" y="18" width="20" height="6" fill="#998877" stroke="#665544" stroke-width="0.5"/>
+  <rect x="8" y="12" width="16" height="6" fill="#887766" stroke="#665544" stroke-width="0.5"/>
+  <rect x="10" y="6" width="12" height="6" fill="#998877" stroke="#665544" stroke-width="0.5"/>
+  <!-- 箭頭標示 -->
+  <path d="M12 3 L16 0 L20 3" stroke="#ffcc44" fill="#ffcc44" opacity="0.8"/>
+</svg>

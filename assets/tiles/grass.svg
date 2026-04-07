@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#3a7a3a"/>
+  <rect x="0" y="0" width="32" height="32" fill="#4a8a4a" opacity="0.5" rx="2"/>
+  <!-- 草紋 -->
+  <path d="M4 8 Q5 4 6 8" stroke="#5a9a5a" fill="none" stroke-width="0.8"/>
+  <path d="M12 6 Q13 2 14 6" stroke="#5a9a5a" fill="none" stroke-width="0.8"/>
+  <path d="M24 10 Q25 6 26 10" stroke="#5a9a5a" fill="none" stroke-width="0.8"/>
+  <path d="M8 20 Q9 16 10 20" stroke="#5a9a5a" fill="none" stroke-width="0.8"/>
+  <path d="M18 18 Q19 14 20 18" stroke="#5a9a5a" fill="none" stroke-width="0.8"/>
+  <path d="M28 24 Q29 20 30 24" stroke="#5a9a5a" fill="none" stroke-width="0.8"/>
+  <path d="M2 28 Q3 24 4 28" stroke="#5a9a5a" fill="none" stroke-width="0.8"/>
+  <path d="M16 28 Q17 24 18 28" stroke="#5a9a5a" fill="none" stroke-width="0.8"/>
+  <!-- 小點綴 -->
+  <circle cx="10" cy="14" r="0.5" fill="#6aaa6a"/>
+  <circle cx="22" cy="6" r="0.5" fill="#6aaa6a"/>
+  <circle cx="6" cy="26" r="0.5" fill="#6aaa6a"/>
+</svg>

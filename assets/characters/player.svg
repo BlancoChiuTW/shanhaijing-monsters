@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- 頭髮 -->
+  <ellipse cx="16" cy="7" rx="6" ry="5" fill="#1a1a3a"/>
+  <!-- 臉 -->
+  <ellipse cx="16" cy="9" rx="5" ry="5" fill="#ffdcb0"/>
+  <!-- 眼睛 -->
+  <ellipse cx="13.5" cy="8.5" rx="1.2" ry="1.5" fill="#fff"/>
+  <circle cx="13.5" cy="8.5" r="0.7" fill="#224"/>
+  <ellipse cx="18.5" cy="8.5" rx="1.2" ry="1.5" fill="#fff"/>
+  <circle cx="18.5" cy="8.5" r="0.7" fill="#224"/>
+  <!-- 嘴巴 -->
+  <path d="M14 12 Q16 13.5 18 12" stroke="#a06040" fill="none" stroke-width="0.5"/>
+  <!-- 道袍上身 -->
+  <path d="M10 14 L10 24 L22 24 L22 14 Q16 12 10 14Z" fill="#2255aa"/>
+  <path d="M14 14 L14 24" stroke="#4488ee" stroke-width="0.5"/>
+  <path d="M18 14 L18 24" stroke="#4488ee" stroke-width="0.5"/>
+  <!-- 衣領 -->
+  <path d="M13 14 L16 18 L19 14" stroke="#ffcc44" fill="none" stroke-width="1"/>
+  <!-- 腰帶 -->
+  <rect x="10" y="20" width="12" height="2" fill="#ffcc44" rx="0.5"/>
+  <!-- 手臂 -->
+  <rect x="7" y="15" width="3" height="7" fill="#2255aa" rx="1"/>
+  <rect x="22" y="15" width="3" height="7" fill="#2255aa" rx="1"/>
+  <!-- 手 -->
+  <circle cx="8.5" cy="22.5" r="1.5" fill="#ffdcb0"/>
+  <circle cx="23.5" cy="22.5" r="1.5" fill="#ffdcb0"/>
+  <!-- 腿 -->
+  <rect x="11" y="24" width="4" height="5" fill="#1a3366" rx="1"/>
+  <rect x="17" y="24" width="4" height="5" fill="#1a3366" rx="1"/>
+  <!-- 靴子 -->
+  <rect x="10" y="28" width="5" height="3" fill="#332211" rx="1"/>
+  <rect x="17" y="28" width="5" height="3" fill="#332211" rx="1"/>
+  <!-- 頭飾 -->
+  <circle cx="16" cy="3" r="1.5" fill="#ffcc44"/>
+  <path d="M14.5 3 L16 0.5 L17.5 3" fill="#ffcc44"/>
+</svg>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#555566"/>
+  <!-- 石紋 -->
+  <rect x="0" y="0" width="15" height="10" fill="#606070" stroke="#444455" stroke-width="0.5"/>
+  <rect x="15" y="0" width="17" height="10" fill="#585868" stroke="#444455" stroke-width="0.5"/>
+  <rect x="0" y="10" width="10" height="12" fill="#585868" stroke="#444455" stroke-width="0.5"/>
+  <rect x="10" y="10" width="12" height="12" fill="#606070" stroke="#444455" stroke-width="0.5"/>
+  <rect x="22" y="10" width="10" height="12" fill="#585868" stroke="#444455" stroke-width="0.5"/>
+  <rect x="0" y="22" width="16" height="10" fill="#606070" stroke="#444455" stroke-width="0.5"/>
+  <rect x="16" y="22" width="16" height="10" fill="#585868" stroke="#444455" stroke-width="0.5"/>
+  <!-- 裂痕 -->
+  <path d="M20 4 L22 8" stroke="#444455" fill="none" stroke-width="0.5"/>
+  <path d="M6 16 L8 20" stroke="#444455" fill="none" stroke-width="0.5"/>
+</svg>
