@@ -63,15 +63,13 @@ export class BattleScene extends Phaser.Scene {
     this.add.rectangle(width / 2, height / 2 - 20, width - 40, height - 140, 0x0a0a1a, 0.5)
       .setStrokeStyle(1, 0x334455);
 
-    // Enemy monster (top right)
-    const enemyTemplate = getTemplate(this.enemyMonster.templateId);
-    this.enemySprite = this.add.rectangle(width * 0.7, height * 0.25, 64, 64, enemyTemplate.color);
-    this.enemySprite.setStrokeStyle(2, 0xffffff);
+    // Enemy monster (top right) - use generated sprite
+    this.enemySprite = this.add.image(width * 0.7, height * 0.25, `monster_${this.enemyMonster.templateId}`) as unknown as Phaser.GameObjects.Rectangle;
+    (this.enemySprite as unknown as Phaser.GameObjects.Image).setDisplaySize(80, 80);
 
-    // Player monster (bottom left)
-    const playerTemplate = getTemplate(this.playerMonster.templateId);
-    this.playerSprite = this.add.rectangle(width * 0.3, height * 0.5, 72, 72, playerTemplate.color);
-    this.playerSprite.setStrokeStyle(2, 0x3399ff);
+    // Player monster (bottom left) - use generated sprite
+    this.playerSprite = this.add.image(width * 0.3, height * 0.5, `monster_${this.playerMonster.templateId}`) as unknown as Phaser.GameObjects.Rectangle;
+    (this.playerSprite as unknown as Phaser.GameObjects.Image).setDisplaySize(96, 96);
 
     // Enemy info panel
     this.add.rectangle(width * 0.25, 30, 200, 50, 0x000000, 0.7).setStrokeStyle(1, 0x445566);
@@ -271,6 +269,9 @@ export class BattleScene extends Phaser.Scene {
     const result = calculateDamage(attacker, defender, skill);
     defender.hp = Math.max(0, defender.hp - result.damage);
 
+    // Play attack SFX
+    try { this.sound.play('sfx_attack'); } catch { /* audio not ready */ }
+
     // Attack animation
     const sprite = isPlayer ? this.playerSprite : this.enemySprite;
     const targetSprite = isPlayer ? this.enemySprite : this.playerSprite;
@@ -321,7 +322,7 @@ export class BattleScene extends Phaser.Scene {
           if (this.enemyIndex < this.enemyTeam.length) {
             this.enemyMonster = this.enemyTeam[this.enemyIndex];
             const template = getTemplate(this.enemyMonster.templateId);
-            this.enemySprite.fillColor = template.color;
+            (this.enemySprite as unknown as Phaser.GameObjects.Image).setTexture(`monster_${this.enemyMonster.templateId}`);
             this.enemySprite.setAlpha(1);
             this.enemySprite.y -= 30;
             this.updateInfoPanels();
@@ -366,8 +367,7 @@ export class BattleScene extends Phaser.Scene {
       // Auto switch to next alive monster
       this.playerMonsterIndex = nextAlive;
       this.playerMonster = state.team[nextAlive];
-      const template = getTemplate(this.playerMonster.templateId);
-      this.playerSprite.fillColor = template.color;
+      (this.playerSprite as unknown as Phaser.GameObjects.Image).setTexture(`monster_${this.playerMonster.templateId}`);
       this.updateInfoPanels();
       this.showMessage(`換上了 ${this.playerMonster.nickname}！`, () => {
         this.isAnimating = false;
@@ -476,7 +476,7 @@ export class BattleScene extends Phaser.Scene {
           this.playerMonsterIndex = i;
           this.playerMonster = m;
           const template = getTemplate(m.templateId);
-          this.playerSprite.fillColor = template.color;
+          (this.playerSprite as unknown as Phaser.GameObjects.Image).setTexture(`monster_${m.templateId}`);
           this.updateInfoPanels();
           this.clearButtons();
           this.showMessage(`換上了 ${m.nickname}！`, () => {
