@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#3a7a3a"/>
+  <!-- 草紋底 -->
+  <path d="M4 8 Q5 4 6 8" stroke="#5a9a5a" fill="none" stroke-width="0.8"/>
+  <path d="M24 10 Q25 6 26 10" stroke="#5a9a5a" fill="none" stroke-width="0.8"/>
+  <!-- 花1 紅 -->
+  <circle cx="8" cy="10" r="2" fill="#ff6666"/>
+  <circle cx="6.5" cy="9" r="1.5" fill="#ff8888"/>
+  <circle cx="9.5" cy="9" r="1.5" fill="#ff8888"/>
+  <circle cx="8" cy="11.5" r="1.5" fill="#ff8888"/>
+  <circle cx="8" cy="10" r="1" fill="#ffee44"/>
+  <!-- 花2 藍 -->
+  <circle cx="22" cy="20" r="2" fill="#6688ff"/>
+  <circle cx="20.5" cy="19" r="1.5" fill="#88aaff"/>
+  <circle cx="23.5" cy="19" r="1.5" fill="#88aaff"/>
+  <circle cx="22" cy="21.5" r="1.5" fill="#88aaff"/>
+  <circle cx="22" cy="20" r="1" fill="#ffee44"/>
+  <!-- 花3 黃 -->
+  <circle cx="14" cy="24" r="1.5" fill="#ffcc44"/>
+  <circle cx="13" cy="23" r="1.2" fill="#ffdd66"/>
+  <circle cx="15" cy="23" r="1.2" fill="#ffdd66"/>
+  <circle cx="14" cy="25" r="1.2" fill="#ffdd66"/>
+  <circle cx="14" cy="24" r="0.8" fill="#ff8844"/>
+  <!-- 莖 -->
+  <path d="M8 12 L8 16" stroke="#2a6a2a" stroke-width="0.8"/>
+  <path d="M22 22 L22 26" stroke="#2a6a2a" stroke-width="0.8"/>
+  <path d="M14 26 L14 29" stroke="#2a6a2a" stroke-width="0.8"/>
+</svg>

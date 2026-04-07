@@ -72,7 +72,7 @@ export class OverworldScene extends Phaser.Scene {
       this.playerTileY * TILE_SIZE + TILE_SIZE / 2,
       'player',
     );
-    this.player.setDisplaySize(TILE_SIZE - 4, TILE_SIZE - 4);
+    this.player.setDisplaySize(TILE_SIZE - 2, TILE_SIZE - 2);
     this.player.setDepth(10);
 
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
@@ -90,21 +90,17 @@ export class OverworldScene extends Phaser.Scene {
       );
       container.setDepth(5);
 
-      // NPC 角色精靈
-      let spriteKey = 'npc';
-      if (npc.npcType === 'trainer') spriteKey = 'npc';
+      // NPC 角色精靈 — 依類型載入不同圖片
+      let spriteKey = 'npc_default';
+      if (npc.npcType === 'trainer') spriteKey = 'npc_trainer';
+      else if (npc.npcType === 'healer') spriteKey = 'npc_healer';
+      else if (npc.npcType === 'fusion') spriteKey = 'npc_fusion';
       const sprite = this.add.image(0, 0, spriteKey);
-      sprite.setDisplaySize(TILE_SIZE - 4, TILE_SIZE - 4);
+      sprite.setDisplaySize(TILE_SIZE - 2, TILE_SIZE - 2);
 
-      // 根據 NPC 類型上色
+      // 自訂色彩覆蓋
       if (npc.spriteColor) {
         sprite.setTint(npc.spriteColor);
-      } else if (npc.npcType === 'trainer') {
-        sprite.setTint(0xff6644);
-      } else if (npc.npcType === 'healer') {
-        sprite.setTint(0x44ddaa);
-      } else if (npc.npcType === 'fusion') {
-        sprite.setTint(0xff8844);
       }
 
       container.add(sprite);

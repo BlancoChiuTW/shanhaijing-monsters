@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#2a6a2a"/>
+  <!-- 草叢 -->
+  <path d="M2 32 Q3 18 4 32" stroke="#4a9a4a" fill="none" stroke-width="1.5"/>
+  <path d="M6 32 Q7 14 8 32" stroke="#3a8a3a" fill="none" stroke-width="1.5"/>
+  <path d="M10 32 Q11 16 12 32" stroke="#4a9a4a" fill="none" stroke-width="1.5"/>
+  <path d="M14 32 Q15 12 16 32" stroke="#3a8a3a" fill="none" stroke-width="1.5"/>
+  <path d="M18 32 Q19 18 20 32" stroke="#4a9a4a" fill="none" stroke-width="1.5"/>
+  <path d="M22 32 Q23 14 24 32" stroke="#3a8a3a" fill="none" stroke-width="1.5"/>
+  <path d="M26 32 Q27 16 28 32" stroke="#4a9a4a" fill="none" stroke-width="1.5"/>
+  <path d="M30 32 Q31 20 32 32" stroke="#3a8a3a" fill="none" stroke-width="1.2"/>
+  <!-- 葉尖高光 -->
+  <circle cx="7" cy="15" r="0.8" fill="#6abb6a" opacity="0.7"/>
+  <circle cx="15" cy="13" r="0.8" fill="#6abb6a" opacity="0.7"/>
+  <circle cx="23" cy="15" r="0.8" fill="#6abb6a" opacity="0.7"/>
+  <!-- 搖曳標記 -->
+  <path d="M5 20 Q8 18 5 16" stroke="#5aaa5a" fill="none" stroke-width="0.5"/>
+  <path d="M21 22 Q24 20 21 18" stroke="#5aaa5a" fill="none" stroke-width="0.5"/>
+</svg>

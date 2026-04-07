@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#2266aa"/>
+  <!-- 水波 -->
+  <path d="M0 8 Q8 5 16 8 Q24 11 32 8" stroke="#3388cc" fill="none" stroke-width="1" opacity="0.6"/>
+  <path d="M0 16 Q8 13 16 16 Q24 19 32 16" stroke="#4499dd" fill="none" stroke-width="1" opacity="0.5"/>
+  <path d="M0 24 Q8 21 16 24 Q24 27 32 24" stroke="#3388cc" fill="none" stroke-width="1" opacity="0.6"/>
+  <!-- 反光 -->
+  <ellipse cx="10" cy="12" rx="3" ry="1" fill="#66bbee" opacity="0.3"/>
+  <ellipse cx="24" cy="20" rx="2" ry="0.8" fill="#66bbee" opacity="0.3"/>
+</svg>

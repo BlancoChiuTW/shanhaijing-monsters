@@ -672,6 +672,20 @@ export class BattleScene extends Phaser.Scene {
           if (this.trainerId) {
             getState().defeatedTrainers.add(this.trainerId);
           }
+
+          // 擊敗最終BOSS → 結局畫面
+          if (this.trainerId === 'boss') {
+            this.showMessage('你擊敗了冥王·幽羅！成為最強的靈獸師！', () => {
+              this.cameras.main.fadeOut(500, 0, 0, 0);
+              this.time.delayedCall(550, () => {
+                this.scene.stop();
+                this.scene.stop('Overworld');
+                this.scene.start('Ending');
+              });
+            });
+            return;
+          }
+
           this.showMessage('戰鬥勝利！', () => this.endBattle());
         });
       },

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#9a8a6a"/>
+  <!-- 鋪石 -->
+  <rect x="1" y="1" width="14" height="9" fill="#a8976a" stroke="#8a7a5a" stroke-width="0.5" rx="1"/>
+  <rect x="17" y="1" width="14" height="9" fill="#a09070" stroke="#8a7a5a" stroke-width="0.5" rx="1"/>
+  <rect x="1" y="12" width="9" height="8" fill="#a09070" stroke="#8a7a5a" stroke-width="0.5" rx="1"/>
+  <rect x="12" y="12" width="9" height="8" fill="#a8976a" stroke="#8a7a5a" stroke-width="0.5" rx="1"/>
+  <rect x="23" y="12" width="8" height="8" fill="#a09070" stroke="#8a7a5a" stroke-width="0.5" rx="1"/>
+  <rect x="1" y="22" width="14" height="9" fill="#a8976a" stroke="#8a7a5a" stroke-width="0.5" rx="1"/>
+  <rect x="17" y="22" width="14" height="9" fill="#a09070" stroke="#8a7a5a" stroke-width="0.5" rx="1"/>
+</svg>

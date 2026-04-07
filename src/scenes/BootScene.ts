@@ -33,46 +33,22 @@ export class BootScene extends Phaser.Scene {
     for (const m of MONSTERS) {
       this.load.image(`monster_${m.id}`, `assets/monsters/${m.id}.png`);
     }
+
+    // 載入角色精靈
+    this.load.image('player', 'assets/characters/player.png');
+    this.load.image('npc_healer', 'assets/characters/npc_healer.png');
+    this.load.image('npc_fusion', 'assets/characters/npc_fusion.png');
+    this.load.image('npc_trainer', 'assets/characters/npc_trainer.png');
+    this.load.image('npc_default', 'assets/characters/npc_default.png');
   }
 
   create(): void {
-    // 生成角色精靈（程式產生，因為只是簡單小人）
-    this.generateCharacterSprites();
+    // 生成靈符材質
+    this.generateCatchBall();
     this.scene.start('MainMenu');
   }
 
-  private generateCharacterSprites(): void {
-    // 玩家 - 藍色小人 16x16
-    const p = this.make.graphics({ x: 0, y: 0 });
-    p.fillStyle(0x3399ff);
-    p.fillRoundedRect(4, 1, 8, 7, 2);
-    p.fillStyle(0x2277cc);
-    p.fillRect(5, 8, 6, 5);
-    p.fillStyle(0x1155aa);
-    p.fillRect(5, 13, 2, 2); p.fillRect(9, 13, 2, 2);
-    p.fillStyle(0xffffff);
-    p.fillRect(5, 3, 2, 2); p.fillRect(9, 3, 2, 2);
-    p.fillStyle(0x000000);
-    p.fillRect(6, 4, 1, 1); p.fillRect(10, 4, 1, 1);
-    p.generateTexture('player', 16, 16);
-    p.destroy();
-
-    // NPC - 綠色小人
-    const n = this.make.graphics({ x: 0, y: 0 });
-    n.fillStyle(0x33cc66);
-    n.fillRoundedRect(4, 1, 8, 7, 2);
-    n.fillStyle(0x22aa55);
-    n.fillRect(5, 8, 6, 5);
-    n.fillStyle(0x118844);
-    n.fillRect(5, 13, 2, 2); n.fillRect(9, 13, 2, 2);
-    n.fillStyle(0xffffff);
-    n.fillRect(5, 3, 2, 2); n.fillRect(9, 3, 2, 2);
-    n.fillStyle(0x000000);
-    n.fillRect(6, 4, 1, 1); n.fillRect(10, 4, 1, 1);
-    n.generateTexture('npc', 16, 16);
-    n.destroy();
-
-    // 靈符
+  private generateCatchBall(): void {
     const c = this.make.graphics({ x: 0, y: 0 });
     c.fillStyle(0xffdd44);
     c.fillCircle(8, 8, 7);
