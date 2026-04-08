@@ -15,20 +15,20 @@ export class MainMenuScene extends Phaser.Scene {
 
     // Title
     this.add.text(width / 2, 90, '山海經', {
-      fontSize: '48px',
+      fontSize: '64px',
       fontFamily: 'serif',
       color: '#ffcc44',
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
     this.add.text(width / 2, 140, '— 靈 獸 錄 —', {
-      fontSize: '22px',
+      fontSize: '30px',
       fontFamily: 'serif',
       color: '#aabbcc',
     }).setOrigin(0.5);
 
     this.add.text(width / 2, 170, 'Classic of Mountains & Seas: Monster Chronicle', {
-      fontSize: '11px',
+      fontSize: '15px',
       color: '#667788',
     }).setOrigin(0.5);
 
@@ -37,7 +37,7 @@ export class MainMenuScene extends Phaser.Scene {
 
     // New Game
     const newGameBtn = this.add.text(width / 2, menuY, '【 新遊戲 】', {
-      fontSize: '20px',
+      fontSize: '28px',
       fontFamily: 'serif',
       color: '#ffffff',
       padding: { x: 16, y: 8 },
@@ -50,7 +50,7 @@ export class MainMenuScene extends Phaser.Scene {
     // Continue
     if (hasSave()) {
       const continueBtn = this.add.text(width / 2, menuY + 45, '【 繼續遊戲 】', {
-        fontSize: '20px',
+        fontSize: '28px',
         fontFamily: 'serif',
         color: '#ffffff',
         padding: { x: 16, y: 8 },
@@ -68,13 +68,13 @@ export class MainMenuScene extends Phaser.Scene {
 
     // 操作說明
     this.add.text(width / 2, height - 55, '操作：方向鍵/WASD 移動 ｜ Shift 加速 ｜ Z/Space 對話 ｜ M 地圖 ｜ B 選單', {
-      fontSize: '9px',
+      fontSize: '13px',
       color: '#556677',
     }).setOrigin(0.5);
 
     // Credits
     this.add.text(width / 2, height - 30, 'v0.4 Demo — BlancoChiuTW × Claude | Icons: game-icons.net (CC BY 3.0)', {
-      fontSize: '10px',
+      fontSize: '14px',
       color: '#445566',
     }).setOrigin(0.5);
   }
@@ -84,11 +84,11 @@ export class MainMenuScene extends Phaser.Scene {
     const { width, height } = this.scale;
 
     this.add.text(width / 2, 25, '選擇修煉功法', {
-      fontSize: '22px', fontFamily: 'serif', color: '#ffcc44',
+      fontSize: '30px', fontFamily: 'serif', color: '#ffcc44',
     }).setOrigin(0.5);
 
     this.add.text(width / 2, 52, '功法決定你的戰鬥風格，同時獲得三隻初始靈獸', {
-      fontSize: '10px', color: '#667788',
+      fontSize: '14px', color: '#667788',
     }).setOrigin(0.5);
 
     const methods: { id: CultivationMethod; name: string; color: number; desc: string; detail: string }[] = [
@@ -122,15 +122,15 @@ export class MainMenuScene extends Phaser.Scene {
       this.add.rectangle(x, y - 55, 36, 36, method.color, 0.8);
 
       this.add.text(x, y - 20, method.name, {
-        fontSize: '14px', fontFamily: 'serif', color: '#ffffff',
+        fontSize: '18px', fontFamily: 'serif', color: '#ffffff',
       }).setOrigin(0.5);
 
       this.add.text(x, y + 2, method.desc, {
-        fontSize: '11px', color: '#aabbcc',
+        fontSize: '15px', color: '#aabbcc',
       }).setOrigin(0.5);
 
       this.add.text(x, y + 30, method.detail, {
-        fontSize: '9px', color: '#889999', align: 'center', lineSpacing: 2,
+        fontSize: '13px', color: '#889999', align: 'center', lineSpacing: 2,
         wordWrap: { width: boxW - 16 },
       }).setOrigin(0.5);
 
@@ -147,7 +147,7 @@ export class MainMenuScene extends Phaser.Scene {
     });
 
     const backBtn = this.add.text(width / 2, height - 35, '[返回]', {
-      fontSize: '14px', color: '#667788',
+      fontSize: '18px', color: '#667788',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     backBtn.on('pointerdown', () => { this.children.removeAll(); this.create(); });
   }
@@ -157,11 +157,11 @@ export class MainMenuScene extends Phaser.Scene {
     const { width, height } = this.scale;
 
     this.add.text(width / 2, 30, '選擇本命靈寵', {
-      fontSize: '22px', fontFamily: 'serif', color: '#ffcc44',
+      fontSize: '30px', fontFamily: 'serif', color: '#ffcc44',
     }).setOrigin(0.5);
 
     this.add.text(width / 2, 60, '本命靈寵全能力 ×1.5 倍，三隻都會加入隊伍', {
-      fontSize: '10px', color: '#667788',
+      fontSize: '14px', color: '#667788',
     }).setOrigin(0.5);
 
     const starters = ['qiongqi', 'bifang', 'kun'];
@@ -180,15 +180,15 @@ export class MainMenuScene extends Phaser.Scene {
       this.add.rectangle(x, y - 40, 50, 50, monster.color);
 
       this.add.text(x, y + 15, monster.name, {
-        fontSize: '18px', fontFamily: 'serif', color: '#ffffff',
+        fontSize: '24px', fontFamily: 'serif', color: '#ffffff',
       }).setOrigin(0.5);
 
       this.add.text(x, y + 40, `屬性：${monster.element}`, {
-        fontSize: '11px', color: '#aabbcc',
+        fontSize: '15px', color: '#aabbcc',
       }).setOrigin(0.5);
 
       this.add.text(x, y + 60, `HP:${Math.floor(monster.baseHp * 1.5)} 攻:${Math.floor(monster.baseAtk * 1.5)}\n防:${Math.floor(monster.baseDef * 1.5)} 速:${Math.floor(monster.baseSpd * 1.5)}`, {
-        fontSize: '10px', color: '#ffcc44', align: 'center',
+        fontSize: '14px', color: '#ffcc44', align: 'center',
       }).setOrigin(0.5);
 
       box.on('pointerover', () => box.setStrokeStyle(2, 0xffcc44));
@@ -200,7 +200,7 @@ export class MainMenuScene extends Phaser.Scene {
     });
 
     const backBtn = this.add.text(width / 2, height - 35, '[返回選功法]', {
-      fontSize: '14px', color: '#667788',
+      fontSize: '18px', color: '#667788',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     backBtn.on('pointerdown', () => this.showCultivationSelect());
   }

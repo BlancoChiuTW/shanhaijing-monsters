@@ -170,20 +170,20 @@ export class BattleScene extends Phaser.Scene {
 
     // Enemy info panel
     this.add.rectangle(width * 0.25, 30, 200, 50, 0x000000, 0.7).setStrokeStyle(1, 0x445566);
-    this.enemyInfoText = this.add.text(width * 0.25 - 90, 14, '', { fontSize: '12px', color: '#ffffff' });
+    this.enemyInfoText = this.add.text(width * 0.25 - 90, 14, '', { fontSize: '16px', color: '#ffffff' });
     this.enemyHpBg = this.add.rectangle(width * 0.25, 44, 160, 8, 0x333333);
     this.enemyHpBar = this.add.rectangle(width * 0.25 - 80, 44, 160, 8, 0x44cc44).setOrigin(0, 0.5);
 
     // Player info panel
     this.add.rectangle(width * 0.75, height * 0.62, 200, 50, 0x000000, 0.7).setStrokeStyle(1, 0x445566);
-    this.playerInfoText = this.add.text(width * 0.75 - 90, height * 0.62 - 16, '', { fontSize: '12px', color: '#ffffff' });
+    this.playerInfoText = this.add.text(width * 0.75 - 90, height * 0.62 - 16, '', { fontSize: '16px', color: '#ffffff' });
     this.playerHpBg = this.add.rectangle(width * 0.75, height * 0.62 + 14, 160, 8, 0x333333);
     this.playerHpBar = this.add.rectangle(width * 0.75 - 80, height * 0.62 + 14, 160, 8, 0x44cc44).setOrigin(0, 0.5);
 
     // Message box
     this.add.rectangle(width / 2, height - 55, width - 20, 90, 0x000000, 0.85).setStrokeStyle(1, 0xffcc44);
     this.messageText = this.add.text(20, height - 94, '', {
-      fontSize: '12px', color: '#ffffff', wordWrap: { width: width - 50 },
+      fontSize: '16px', color: '#ffffff', wordWrap: { width: width - 50 },
     });
 
     // 煉天大法：額外顯示人類實體
@@ -194,7 +194,7 @@ export class BattleScene extends Phaser.Scene {
       this.playerHumanSprite.setDisplaySize(50, 50);
 
       this.add.rectangle(phx, phy - 35, 100, 30, 0x000000, 0.7).setStrokeStyle(1, 0x445566);
-      this.playerHumanInfoText = this.add.text(phx - 45, phy - 48, '', { fontSize: '9px', color: '#ffffff' });
+      this.playerHumanInfoText = this.add.text(phx - 45, phy - 48, '', { fontSize: '13px', color: '#ffffff' });
       this.add.rectangle(phx, phy - 22, 80, 6, 0x333333);
       this.playerHumanHpBar = this.add.rectangle(phx - 40, phy - 22, 80, 6, 0x44cc44).setOrigin(0, 0.5);
     }
@@ -348,7 +348,7 @@ export class BattleScene extends Phaser.Scene {
       icon.setDisplaySize(14, 14).setOrigin(0, 0.5);
       this.actionButtons.push(icon);
       const btn = this.add.text(x + 18, y, act.text, {
-        fontSize: '13px', color: '#ffffff', fontStyle: 'bold',
+        fontSize: '17px', color: '#ffffff', fontStyle: 'bold',
       }).setInteractive({ useHandCursor: true });
       btn.on('pointerover', () => { btn.setColor('#ffcc44'); icon.setTint(0xffcc44); this.playSfx('sfx_cursor', 0.3); });
       btn.on('pointerout', () => { btn.setColor('#ffffff'); icon.clearTint(); });
@@ -374,7 +374,7 @@ export class BattleScene extends Phaser.Scene {
       const label = `${s.skill.name}(${s.skill.element}${effectTag}) ${s.currentPp}/${s.skill.pp}`;
       const color = s.currentPp > 0 ? elemHex : '#555555';
       const btn = this.add.text(x, y, label, {
-        fontSize: '10px', color,
+        fontSize: '14px', color,
       }).setInteractive({ useHandCursor: true });
 
       if (s.currentPp > 0) {
@@ -386,7 +386,7 @@ export class BattleScene extends Phaser.Scene {
     });
 
     const back = this.add.text(width / 2, height - 18, '[返回]', {
-      fontSize: '10px', color: '#889999',
+      fontSize: '14px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showActions());
     this.skillButtons.push(back);
@@ -529,7 +529,7 @@ export class BattleScene extends Phaser.Scene {
         targetX + (Math.random() - 0.5) * 30,
         targetY + (isUp ? 20 : -20),
         isUp ? '▲' : '▼',
-        { fontSize: '14px', color: '#' + color.toString(16).padStart(6, '0') },
+        { fontSize: '18px', color: '#' + color.toString(16).padStart(6, '0') },
       ).setOrigin(0.5).setDepth(60);
       this.tweens.add({
         targets: arrow,
@@ -780,7 +780,7 @@ export class BattleScene extends Phaser.Scene {
               const dmgColor = result.effectiveness === 'effective' ? '#ff4444'
                 : result.effectiveness === 'weak' ? '#888888' : '#ffffff';
               const dmgText = this.add.text(targetSprite.x, targetSprite.y - 30, `-${result.damage}`, {
-                fontSize: result.isCrit ? '22px' : '16px',
+                fontSize: result.isCrit ? '30px' : '22px',
                 fontStyle: 'bold',
                 color: dmgColor,
                 stroke: '#000000',
@@ -804,7 +804,7 @@ export class BattleScene extends Phaser.Scene {
                   this.updateInfoPanels();
                   // 顯示反傷數字
                   const recoilText = this.add.text(sprite.x, sprite.y - 30, `-${result.recoilDmg}`, {
-                    fontSize: '14px', fontStyle: 'bold', color: '#ff8844',
+                    fontSize: '18px', fontStyle: 'bold', color: '#ff8844',
                     stroke: '#000000', strokeThickness: 2,
                   }).setOrigin(0.5).setDepth(60);
                   this.tweens.add({
@@ -1154,7 +1154,7 @@ export class BattleScene extends Phaser.Scene {
       const y = height - 95 + slot * 16;
       const color = m.hp > 0 ? '#ffffff' : '#555555';
       const label = `${m.nickname} Lv.${m.level} HP:${m.hp}/${m.maxHp}`;
-      const btn = this.add.text(30, y, label, { fontSize: '10px', color })
+      const btn = this.add.text(30, y, label, { fontSize: '14px', color })
         .setInteractive({ useHandCursor: true });
 
       if (m.hp > 0) {
@@ -1189,7 +1189,7 @@ export class BattleScene extends Phaser.Scene {
     });
 
     const back = this.add.text(width / 2, height - 18, '[返回]', {
-      fontSize: '10px', color: '#889999',
+      fontSize: '14px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showActions());
     this.skillButtons.push(back);
@@ -1291,7 +1291,7 @@ export class BattleScene extends Phaser.Scene {
     const { width, height } = this.scale;
 
     const petBtn = this.add.text(width / 2 - 80, height - 78, '【靈寵行動】', {
-      fontSize: '13px', color: '#ffffff', fontStyle: 'bold',
+      fontSize: '17px', color: '#ffffff', fontStyle: 'bold',
     }).setInteractive({ useHandCursor: true });
     petBtn.on('pointerover', () => petBtn.setColor('#ffcc44'));
     petBtn.on('pointerout', () => petBtn.setColor('#ffffff'));
@@ -1299,7 +1299,7 @@ export class BattleScene extends Phaser.Scene {
     this.actionButtons.push(petBtn);
 
     const humanBtn = this.add.text(width / 2 + 20, height - 78, '【人類行動】', {
-      fontSize: '13px', color: '#ff8844', fontStyle: 'bold',
+      fontSize: '17px', color: '#ff8844', fontStyle: 'bold',
     }).setInteractive({ useHandCursor: true });
     humanBtn.on('pointerover', () => humanBtn.setColor('#ffcc44'));
     humanBtn.on('pointerout', () => humanBtn.setColor('#ff8844'));
@@ -1324,7 +1324,7 @@ export class BattleScene extends Phaser.Scene {
       const x = width / 2 - 80 + i * 80;
       const y = height - 75;
       const btn = this.add.text(x, y, act.text, {
-        fontSize: '12px', color: '#ffffff',
+        fontSize: '16px', color: '#ffffff',
       }).setInteractive({ useHandCursor: true });
       btn.on('pointerover', () => btn.setColor('#ffcc44'));
       btn.on('pointerout', () => btn.setColor('#ffffff'));
@@ -1333,7 +1333,7 @@ export class BattleScene extends Phaser.Scene {
     });
 
     const back = this.add.text(width / 2, height - 18, '[返回]', {
-      fontSize: '10px', color: '#889999',
+      fontSize: '14px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showCombatantChoice());
     this.actionButtons.push(back);
@@ -1357,7 +1357,7 @@ export class BattleScene extends Phaser.Scene {
 
       const color = enabled ? '#ff8844' : '#555555';
       const btn = this.add.text(x, y, `${skill.name}(${skill.description})`, {
-        fontSize: '10px', color,
+        fontSize: '14px', color,
       }).setInteractive({ useHandCursor: true });
 
       if (enabled) {
@@ -1369,7 +1369,7 @@ export class BattleScene extends Phaser.Scene {
     });
 
     const back = this.add.text(width / 2, height - 18, '[返回]', {
-      fontSize: '10px', color: '#889999',
+      fontSize: '14px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showCombatantChoice());
     this.skillButtons.push(back);
@@ -1533,7 +1533,7 @@ export class BattleScene extends Phaser.Scene {
       const y = listStartY + i * 14;
       const label = `${template.name}${isCurrent ? ' [當前]' : ''}`;
       const color = isCurrent ? '#555555' : '#cc66ff';
-      const btn = this.add.text(30, y, label, { fontSize: '9px', color })
+      const btn = this.add.text(30, y, label, { fontSize: '13px', color })
         .setInteractive({ useHandCursor: true });
 
       if (!isCurrent) {
@@ -1569,7 +1569,7 @@ export class BattleScene extends Phaser.Scene {
     });
 
     const back = this.add.text(width / 2, height - 18, '[返回]', {
-      fontSize: '10px', color: '#889999',
+      fontSize: '14px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showActions());
     this.skillButtons.push(back);
@@ -1587,7 +1587,7 @@ export class BattleScene extends Phaser.Scene {
       const y = height - 95 + i * 14;
       const color = m.hp > 0 ? '#ffffff' : '#555555';
       const label = `${m.nickname} Lv.${m.level} HP:${m.hp}/${m.maxHp}`;
-      const btn = this.add.text(30, y, label, { fontSize: '9px', color })
+      const btn = this.add.text(30, y, label, { fontSize: '13px', color })
         .setInteractive({ useHandCursor: true });
 
       if (m.hp > 0) {
@@ -1621,7 +1621,7 @@ export class BattleScene extends Phaser.Scene {
     });
 
     const back = this.add.text(width / 2, height - 18, '[返回]', {
-      fontSize: '10px', color: '#889999',
+      fontSize: '14px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showActions());
     this.skillButtons.push(back);
@@ -1661,7 +1661,7 @@ export class BattleScene extends Phaser.Scene {
       const x = width / 2 - 120 + (i % 2) * 160;
       const y = height - 90 + Math.floor(i / 2) * 22;
       const btn = this.add.text(x, y, `${ds.name}(${ds.desc})`, {
-        fontSize: '10px', color: ds.color,
+        fontSize: '14px', color: ds.color,
       }).setInteractive({ useHandCursor: true });
       btn.on('pointerover', () => btn.setColor('#ffcc44'));
       btn.on('pointerout', () => btn.setColor(ds.color));
@@ -1937,7 +1937,7 @@ export class BattleScene extends Phaser.Scene {
     const { width, height } = this.scale;
     targets.forEach((t, i) => {
       const btn = this.add.text(width / 2 - 60, height - 82 + i * 22, `【${t.name}】`, {
-        fontSize: '12px', color: '#ff4444',
+        fontSize: '16px', color: '#ff4444',
       }).setInteractive({ useHandCursor: true });
       btn.on('pointerover', () => btn.setColor('#ffcc44'));
       btn.on('pointerout', () => btn.setColor('#ff4444'));

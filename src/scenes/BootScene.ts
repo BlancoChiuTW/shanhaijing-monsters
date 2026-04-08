@@ -13,7 +13,7 @@ export class BootScene extends Phaser.Scene {
     const bar = this.add.rectangle(width / 2, height / 2, 300, 20, 0x222222);
     const fill = this.add.rectangle(width / 2 - 148, height / 2, 0, 16, 0xffcc44).setOrigin(0, 0.5);
     this.add.text(width / 2, height / 2 - 30, '載入中...', {
-      fontSize: '16px', color: '#ffcc44', fontFamily: 'serif',
+      fontSize: '22px', color: '#ffcc44', fontFamily: 'serif',
     }).setOrigin(0.5);
 
     this.load.on('progress', (p: number) => {

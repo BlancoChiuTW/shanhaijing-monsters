@@ -3,6 +3,7 @@ import { getMap, type GameMap, type MapNpc, type MapTreasure } from '../data/map
 import { getState, saveGame, getFirstAliveIndex, healTeam, addMonsterToTeam, recalcPlayerStats, healPlayer } from '../utils/gameState';
 import { createMonsterInstance, MONSTERS, getCultivation, fuseMonsters, swapSkill, getTemplate, type MonsterInstance } from '../data/monsters';
 import { healMonster, applyExp, getExpReward, generateEnemyPlayerStats, generateBossPlayerStats } from '../utils/battle';
+import { findNearestWalkable } from '../utils/mapGenerator';
 
 const TILE_SIZE = 32;
 const TILE_KEYS = ['tile_grass', 'tile_wall', 'tile_tall_grass', 'tile_water', 'tile_exit', 'tile_path', 'tile_flower'];
@@ -19,6 +20,7 @@ export class OverworldScene extends Phaser.Scene {
   private playerTileX = 0;
   private playerTileY = 0;
   private isMoving = false;
+  private isTransitioning = false;
   private moveTimer = 0;
   private shiftKey!: Phaser.Input.Keyboard.Key;
   private dialogueBox: Phaser.GameObjects.Container | null = null;
@@ -61,6 +63,7 @@ export class OverworldScene extends Phaser.Scene {
     this.currentMap = getMap(state.currentMapId);
     this.playerTileX = state.playerX;
     this.playerTileY = state.playerY;
+    this.isTransitioning = false;
     this.minimapContainer = null;
 
     this.initTilePool();
@@ -204,7 +207,7 @@ export class OverworldScene extends Phaser.Scene {
 
       // NPC 名稱標籤
       const label = this.add.text(0, -TILE_SIZE / 2 - 2, npc.name, {
-        fontSize: '7px', color: '#ffffff', align: 'center',
+        fontSize: '10px', color: '#ffffff', align: 'center',
         stroke: '#000000', strokeThickness: 2,
       }).setOrigin(0.5, 1);
       container.add(label);
@@ -293,13 +296,13 @@ export class OverworldScene extends Phaser.Scene {
 
   private createUI(): void {
     this.mapNameText = this.add.text(10, 10, this.currentMap.name, {
-      fontSize: '14px', fontFamily: 'serif', color: '#ffcc44',
+      fontSize: '18px', fontFamily: 'serif', color: '#ffcc44',
       backgroundColor: '#000000aa', padding: { x: 8, y: 4 },
     }).setScrollFactor(0).setDepth(100);
     this.cameras.main.ignore(this.mapNameText);
 
     this.infoText = this.add.text(10, 34, '', {
-      fontSize: '10px', color: '#aabbcc',
+      fontSize: '14px', color: '#aabbcc',
       backgroundColor: '#000000aa', padding: { x: 6, y: 3 },
     }).setScrollFactor(0).setDepth(100);
     this.cameras.main.ignore(this.infoText);
@@ -309,12 +312,12 @@ export class OverworldScene extends Phaser.Scene {
     // 操作提示 — 右上角
     const hints = [
       this.add.text(this.scale.width - 10, 10, '方向鍵/WASD 移動 ｜ 滑鼠點擊互動', {
-        fontSize: '9px', color: '#667788',
+        fontSize: '13px', color: '#667788',
         backgroundColor: '#000000aa', padding: { x: 6, y: 2 },
       }).setOrigin(1, 0).setScrollFactor(0).setDepth(100),
 
       this.add.text(this.scale.width - 10, 26, 'Z/Space 對話 ｜ M 地圖 ｜ B/ESC 選單', {
-        fontSize: '9px', color: '#667788',
+        fontSize: '13px', color: '#667788',
         backgroundColor: '#000000aa', padding: { x: 6, y: 2 },
       }).setOrigin(1, 0).setScrollFactor(0).setDepth(100),
     ];
@@ -394,7 +397,7 @@ export class OverworldScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     this.cullTiles();
     if (this.dialogueCooldown > 0) this.dialogueCooldown -= delta;
-    if (this.dialogueBox || this.isMoving) return;
+    if (this.dialogueBox || this.isMoving || this.isTransitioning) return;
 
     this.moveTimer -= delta;
     if (this.moveTimer > 0) return;
@@ -651,7 +654,7 @@ export class OverworldScene extends Phaser.Scene {
 
       // NPC 名稱
       const nameLabel = this.add.text(12, camH - boxH - 10, npc.name, {
-        fontSize: '11px', color: '#ffcc44', fontStyle: 'bold',
+        fontSize: '15px', color: '#ffcc44', fontStyle: 'bold',
         backgroundColor: '#0a0a1a', padding: { x: 4, y: 1 },
       });
       container.add(nameLabel);
@@ -663,14 +666,14 @@ export class OverworldScene extends Phaser.Scene {
       else if (npc.npcType === 'trainer') typeTag = '[對戰]';
       if (typeTag) {
         container.add(this.add.text(nameLabel.x + nameLabel.width + 6, camH - boxH - 10, typeTag, {
-          fontSize: '9px', color: '#88aacc', backgroundColor: '#0a0a1a', padding: { x: 2, y: 2 },
+          fontSize: '13px', color: '#88aacc', backgroundColor: '#0a0a1a', padding: { x: 2, y: 2 },
         }));
       }
 
       // 對話文字 — 打字機效果
       const fullText = npc.dialogue[dialogueIndex];
       const textObj = this.add.text(52, camH - boxH + 10, '', {
-        fontSize: '12px', color: '#ffffff', lineSpacing: 4,
+        fontSize: '16px', color: '#ffffff', lineSpacing: 4,
         wordWrap: { width: camW - 80 },
       });
       container.add(textObj);
@@ -698,7 +701,7 @@ export class OverworldScene extends Phaser.Scene {
         const hintText = isLast ? '[Z / Space] 結束對話' : '[Z / Space] 繼續 >>';
         const hintColor = isLast ? '#88aacc' : '#ffcc44';
         const hint = this.add.text(camW - 16, camH - 12, hintText, {
-          fontSize: '9px', color: hintColor,
+          fontSize: '13px', color: hintColor,
         }).setOrigin(1, 0.5);
         container.add(hint);
         this.tweens.add({
@@ -799,7 +802,7 @@ export class OverworldScene extends Phaser.Scene {
     container.add(bg);
 
     container.add(this.add.text(camW / 2, camH / 2 - 40, '選擇對戰方式', {
-      fontSize: '14px', fontFamily: 'serif', color: '#ffcc44',
+      fontSize: '18px', fontFamily: 'serif', color: '#ffcc44',
     }).setOrigin(0.5));
 
     const launchBattle = (type: 'trainer' | 'deathmatch') => {
@@ -835,7 +838,7 @@ export class OverworldScene extends Phaser.Scene {
     };
 
     const normalBtn = this.add.text(camW / 2 - 60, camH / 2, '【普通對戰】', {
-      fontSize: '13px', color: '#ffffff',
+      fontSize: '17px', color: '#ffffff',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     normalBtn.on('pointerover', () => normalBtn.setColor('#ffcc44'));
     normalBtn.on('pointerout', () => normalBtn.setColor('#ffffff'));
@@ -843,7 +846,7 @@ export class OverworldScene extends Phaser.Scene {
     container.add(normalBtn);
 
     const deathBtn = this.add.text(camW / 2 + 60, camH / 2, '【死　鬥】', {
-      fontSize: '13px', color: '#ff4444',
+      fontSize: '17px', color: '#ff4444',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     deathBtn.on('pointerover', () => deathBtn.setColor('#ffcc44'));
     deathBtn.on('pointerout', () => deathBtn.setColor('#ff4444'));
@@ -851,11 +854,11 @@ export class OverworldScene extends Phaser.Scene {
     container.add(deathBtn);
 
     container.add(this.add.text(camW / 2, camH / 2 + 25, '死鬥：人+寵同時出戰，敗者失去所有靈寵', {
-      fontSize: '8px', color: '#ff6666',
+      fontSize: '11px', color: '#ff6666',
     }).setOrigin(0.5));
 
     const cancelBtn = this.add.text(camW / 2, camH / 2 + 45, '取消', {
-      fontSize: '11px', color: '#667788',
+      fontSize: '15px', color: '#667788',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     cancelBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
     container.add(cancelBtn);
@@ -894,7 +897,7 @@ export class OverworldScene extends Phaser.Scene {
   private showNotification(msg: string, color: number): void {
     const camW = this.scale.width;
     const text = this.add.text(camW / 2, 60, msg, {
-      fontSize: '13px', color: '#' + color.toString(16).padStart(6, '0'),
+      fontSize: '17px', color: '#' + color.toString(16).padStart(6, '0'),
       backgroundColor: '#000000cc', padding: { x: 10, y: 6 },
       fontStyle: 'bold',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(300);
@@ -929,11 +932,11 @@ export class OverworldScene extends Phaser.Scene {
     container.add(bg);
 
     container.add(this.add.text(camW / 2, 15, '— 練 妖 壺 —', {
-      fontSize: '14px', fontFamily: 'serif', color: '#ff8844',
+      fontSize: '18px', fontFamily: 'serif', color: '#ff8844',
     }).setOrigin(0.5));
 
     container.add(this.add.text(camW / 2, 32, '選擇兩隻靈獸進行融合（將被消耗）', {
-      fontSize: '9px', color: '#aa8866',
+      fontSize: '13px', color: '#aa8866',
     }).setOrigin(0.5));
 
     let selectedA: number | null = null;
@@ -960,7 +963,7 @@ export class OverworldScene extends Phaser.Scene {
       const shinyTag = m.isShiny ? '[異]' : '';
       const fusedTag = m.isFused ? '融' : '';
       const info = `${shinyTag}${fusedTag}${m.nickname} ${cult.displayName} HP:${m.hp}/${m.maxHp} 攻:${m.atk}`;
-      const btn = this.add.text(15, y, info, { fontSize: '10px', color: '#ffffff' })
+      const btn = this.add.text(15, y, info, { fontSize: '14px', color: '#ffffff' })
         .setInteractive({ useHandCursor: true });
 
       btn.on('pointerdown', () => {
@@ -978,7 +981,7 @@ export class OverworldScene extends Phaser.Scene {
 
     // 融合按鈕
     const fuseBtn = this.add.text(camW / 2, camH - 42, '【 融 合 】', {
-      fontSize: '13px', color: '#555555', fontStyle: 'bold',
+      fontSize: '17px', color: '#555555', fontStyle: 'bold',
     }).setOrigin(0.5);
 
     fuseBtn.on('pointerdown', () => {
@@ -1010,7 +1013,7 @@ export class OverworldScene extends Phaser.Scene {
     container.add(fuseBtn);
 
     const closeBtn = this.add.text(camW / 2, camH - 22, '取消', {
-      fontSize: '10px', color: '#889999',
+      fontSize: '14px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
     container.add(closeBtn);
@@ -1031,7 +1034,7 @@ export class OverworldScene extends Phaser.Scene {
     container.add(bg);
 
     container.add(this.add.text(camW / 2, camH / 2 - 60, '融合成功！', {
-      fontSize: '16px', color: '#ff8844', fontStyle: 'bold',
+      fontSize: '22px', color: '#ff8844', fontStyle: 'bold',
     }).setOrigin(0.5));
 
     // 靈獸圖片
@@ -1043,23 +1046,23 @@ export class OverworldScene extends Phaser.Scene {
     const cult = getCultivation(monster.level);
     const info = `${monster.nickname} ${cult.displayName}\nHP:${monster.maxHp} 攻:${monster.atk} 防:${monster.def} 速:${monster.spd}`;
     container.add(this.add.text(camW / 2, camH / 2 + 20, info, {
-      fontSize: '11px', color: '#ffffff', align: 'center',
+      fontSize: '15px', color: '#ffffff', align: 'center',
     }).setOrigin(0.5));
 
     const skills = monster.skills.map(s => s.skill.name).join('、');
     container.add(this.add.text(camW / 2, camH / 2 + 48, `技能：${skills}`, {
-      fontSize: '9px', color: '#aabbcc', align: 'center',
+      fontSize: '13px', color: '#aabbcc', align: 'center',
       wordWrap: { width: camW - 60 },
     }).setOrigin(0.5));
 
     if (extraMsg) {
       container.add(this.add.text(camW / 2, camH / 2 + 65, extraMsg, {
-        fontSize: '11px', color: '#ffcc44', fontStyle: 'bold',
+        fontSize: '15px', color: '#ffcc44', fontStyle: 'bold',
       }).setOrigin(0.5));
     }
 
     const closeBtn = this.add.text(camW / 2, camH / 2 + 82, '確認', {
-      fontSize: '12px', color: '#ffcc44',
+      fontSize: '16px', color: '#ffcc44',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
     container.add(closeBtn);
@@ -1069,10 +1072,20 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private transitionToMap(mapId: string, targetX: number, targetY: number): void {
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
+
+    // 預載目標地圖，用 findNearestWalkable 確保落點可行走
+    const targetMap = getMap(mapId);
+    const safePos = findNearestWalkable(
+      targetMap.tiles, targetMap.width, targetMap.height,
+      { x: targetX, y: targetY }, false,
+    );
+
     const state = getState();
     state.currentMapId = mapId;
-    state.playerX = targetX;
-    state.playerY = targetY;
+    state.playerX = safePos.x;
+    state.playerY = safePos.y;
 
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.time.delayedCall(300, () => {
@@ -1112,7 +1125,7 @@ export class OverworldScene extends Phaser.Scene {
 
     // 標題
     container.add(this.add.text(camW / 2, 8, `${map.name} — 地圖`, {
-      fontSize: '13px', fontFamily: 'serif', color: '#ffcc44',
+      fontSize: '17px', fontFamily: 'serif', color: '#ffcc44',
     }).setOrigin(0.5));
 
     // 用 RenderTexture 繪製地圖
@@ -1191,13 +1204,13 @@ export class OverworldScene extends Phaser.Scene {
       const lx = 20 + i * 70;
       container.add(this.add.rectangle(lx, legendY, 8, 8, parseInt(leg.color.replace('#', '0x'))).setOrigin(0, 0.5));
       container.add(this.add.text(lx + 12, legendY, leg.label, {
-        fontSize: '8px', color: '#aabbcc',
+        fontSize: '11px', color: '#aabbcc',
       }).setOrigin(0, 0.5));
     });
 
     // 關閉提示
     container.add(this.add.text(camW / 2, camH - 16, '按 M 或點擊關閉', {
-      fontSize: '8px', color: '#667788',
+      fontSize: '11px', color: '#667788',
     }).setOrigin(0.5));
 
     // 點擊關閉
@@ -1225,7 +1238,7 @@ export class OverworldScene extends Phaser.Scene {
     container.add(bg);
 
     container.add(this.add.text(camW / 2, camH / 2 - 80, '— 選 單 —', {
-      fontSize: '16px', fontFamily: 'serif', color: '#ffcc44',
+      fontSize: '22px', fontFamily: 'serif', color: '#ffcc44',
     }).setOrigin(0.5));
 
     const options = [
@@ -1245,7 +1258,7 @@ export class OverworldScene extends Phaser.Scene {
       container.add(icon);
       // 文字
       const btn = this.add.text(camW / 2 - 52, y, opt.text, {
-        fontSize: '13px', color: '#ffffff',
+        fontSize: '17px', color: '#ffffff',
       }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
       btn.on('pointerover', () => { btn.setColor('#ffcc44'); icon.setTint(0xffcc44); });
       btn.on('pointerout', () => { btn.setColor('#ffffff'); icon.clearTint(); });
@@ -1284,7 +1297,7 @@ export class OverworldScene extends Phaser.Scene {
     container.add(bg);
 
     container.add(this.add.text(camW / 2, 12, '— 靈 獸 背 包 —', {
-      fontSize: '13px', fontFamily: 'serif', color: '#ffcc44',
+      fontSize: '17px', fontFamily: 'serif', color: '#ffcc44',
     }).setOrigin(0.5));
 
     // 顯示每隻靈獸
@@ -1303,30 +1316,30 @@ export class OverworldScene extends Phaser.Scene {
       const shinyTag = m.isShiny ? '[異]' : '';
       const fusedTag = m.isFused ? '[融]' : '';
       container.add(this.add.text(38, startY, `${shinyTag}${fusedTag}${m.nickname}`, {
-        fontSize: '10px', color: hpColor, fontStyle: 'bold',
+        fontSize: '14px', color: hpColor, fontStyle: 'bold',
       }));
 
       container.add(this.add.text(38, startY + 12, `${cult.displayName}`, {
-        fontSize: '9px', color: cult.color,
+        fontSize: '13px', color: cult.color,
       }));
 
       // 素質
       container.add(this.add.text(camW / 2 + 10, startY, `HP:${m.hp}/${m.maxHp}`, {
-        fontSize: '9px', color: hpColor,
+        fontSize: '13px', color: hpColor,
       }));
       container.add(this.add.text(camW / 2 + 10, startY + 11, `攻:${m.atk} 防:${m.def} 速:${m.spd}`, {
-        fontSize: '8px', color: '#889999',
+        fontSize: '11px', color: '#889999',
       }));
 
       // 經驗值
       const expNeeded = m.level <= 30 ? m.level * 20 + 10 : m.level * 40;
       container.add(this.add.text(camW / 2 + 10, startY + 22, `EXP:${m.exp}/${expNeeded}`, {
-        fontSize: '8px', color: '#667788',
+        fontSize: '11px', color: '#667788',
       }));
 
       // 點擊查看技能詳情
       const detailBtn = this.add.text(camW - 20, startY + 10, '▶', {
-        fontSize: '12px', color: '#667788',
+        fontSize: '16px', color: '#667788',
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       detailBtn.on('pointerdown', () => this.showMonsterDetail(container, m));
       container.add(detailBtn);
@@ -1336,19 +1349,19 @@ export class OverworldScene extends Phaser.Scene {
     if (state.storage.length > 0) {
       const storageY = 28 + state.team.length * 36 + 5;
       container.add(this.add.text(10, storageY, `倉庫 (${state.storage.length})`, {
-        fontSize: '9px', color: '#667788',
+        fontSize: '13px', color: '#667788',
       }));
       state.storage.forEach((m, i) => {
         const y = storageY + 14 + i * 14;
         const cult = getCultivation(m.level);
         container.add(this.add.text(15, y, `${m.nickname} ${cult.displayName}`, {
-          fontSize: '8px', color: '#556677',
+          fontSize: '11px', color: '#556677',
         }));
       });
     }
 
     const closeBtn = this.add.text(camW / 2, camH - 20, '關閉', {
-      fontSize: '11px', color: '#ffcc44',
+      fontSize: '15px', color: '#ffcc44',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
     container.add(closeBtn);
@@ -1385,10 +1398,10 @@ export class OverworldScene extends Phaser.Scene {
       container.add(bg);
 
       container.add(this.add.text(camW / 2, 10, '— 練 化 —', {
-        fontSize: '13px', fontFamily: 'serif', color: '#ff6644',
+        fontSize: '17px', fontFamily: 'serif', color: '#ff6644',
       }).setOrigin(0.5));
       container.add(this.add.text(camW / 2, 26, '選擇吞噬者，再選祭品。祭品的累積經驗將被吸收。', {
-        fontSize: '7px', color: '#aabbcc', wordWrap: { width: camW - 40 },
+        fontSize: '10px', color: '#aabbcc', wordWrap: { width: camW - 40 },
       }).setOrigin(0.5));
 
       // 列出所有靈獸
@@ -1417,11 +1430,11 @@ export class OverworldScene extends Phaser.Scene {
         container.add(sprite);
 
         const nameText = this.add.text(32, y, label, {
-          fontSize: '9px', color, fontStyle: selectedEater === i || selectedFood === i ? 'bold' : 'normal',
+          fontSize: '13px', color, fontStyle: selectedEater === i || selectedFood === i ? 'bold' : 'normal',
         }).setInteractive({ useHandCursor: true });
 
         const expText = this.add.text(32, y + 12, `累積EXP: ${totalExp}`, {
-          fontSize: '7px', color: '#667788',
+          fontSize: '10px', color: '#667788',
         });
 
         nameText.on('pointerdown', () => {
@@ -1445,11 +1458,11 @@ export class OverworldScene extends Phaser.Scene {
         // 角色標記
         if (selectedEater === i) {
           container.add(this.add.text(camW - 30, y + 4, '吞', {
-            fontSize: '10px', color: '#ff6644', fontStyle: 'bold',
+            fontSize: '14px', color: '#ff6644', fontStyle: 'bold',
           }));
         } else if (selectedFood === i) {
           container.add(this.add.text(camW - 30, y + 4, '祭', {
-            fontSize: '10px', color: '#44ff44', fontStyle: 'bold',
+            fontSize: '14px', color: '#44ff44', fontStyle: 'bold',
           }));
         }
       });
@@ -1482,7 +1495,7 @@ export class OverworldScene extends Phaser.Scene {
         foodTotalExp = Math.floor(foodTotalExp * bonusMul);
 
         const confirmBtn = this.add.text(camW / 2, camH - 35, `確認練化：${eater.nickname} 吞噬 ${food.nickname} (+${foodTotalExp} EXP)${bonusTag}`, {
-          fontSize: '10px', color: '#ff6644', fontStyle: 'bold',
+          fontSize: '14px', color: '#ff6644', fontStyle: 'bold',
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         confirmBtn.on('pointerover', () => confirmBtn.setColor('#ffcc44'));
@@ -1527,7 +1540,7 @@ export class OverworldScene extends Phaser.Scene {
 
       // 關閉按鈕
       const closeBtn = this.add.text(camW / 2, camH - 18, '取消', {
-        fontSize: '10px', color: '#667788',
+        fontSize: '14px', color: '#667788',
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
       container.add(closeBtn);
@@ -1574,24 +1587,24 @@ export class OverworldScene extends Phaser.Scene {
       const shinyTag = m.isShiny ? '[異] ' : '';
       const fusedTag = m.isFused ? '[融] ' : '';
       container.add(this.add.text(110, 22, `${shinyTag}${fusedTag}${m.nickname}`, {
-        fontSize: '13px', color: '#ffffff', fontStyle: 'bold',
+        fontSize: '17px', color: '#ffffff', fontStyle: 'bold',
       }));
       container.add(this.add.text(110, 38, cult.displayName, {
-        fontSize: '11px', color: cult.color,
+        fontSize: '15px', color: cult.color,
       }));
 
       // 素質
       container.add(this.add.text(110, 54, `HP:${m.hp}/${m.maxHp} 攻:${m.atk} 防:${m.def} 速:${m.spd}`, {
-        fontSize: '8px', color: '#aabbcc',
+        fontSize: '11px', color: '#aabbcc',
       }));
       const expNeeded = m.level <= 30 ? m.level * 20 + 10 : m.level * 40;
       container.add(this.add.text(110, 65, `EXP: ${m.exp}/${expNeeded}`, {
-        fontSize: '8px', color: '#667788',
+        fontSize: '11px', color: '#667788',
       }));
 
       // ── 裝備中的技能 ──
       container.add(this.add.text(15, 82, '-- 裝備中 (戰鬥使用) --', {
-        fontSize: '9px', color: '#ffcc44',
+        fontSize: '13px', color: '#ffcc44',
       }));
 
       m.skills.forEach((s, i) => {
@@ -1601,12 +1614,12 @@ export class OverworldScene extends Phaser.Scene {
         const color = isSelected ? '#ff6644' : '#ffffff';
 
         const nameBtn = this.add.text(15, y, `${i + 1}. ${s.skill.name} (${s.skill.element})`, {
-          fontSize: '9px', color, fontStyle: isSelected ? 'bold' : 'normal',
+          fontSize: '13px', color, fontStyle: isSelected ? 'bold' : 'normal',
         }).setInteractive({ useHandCursor: true });
 
         container.add(nameBtn);
         container.add(this.add.text(camW - 15, y, `威力:${s.skill.power} 命中:${s.skill.accuracy} PP:${s.currentPp}/${s.skill.pp} ${effectTag}`, {
-          fontSize: '7px', color: '#889999',
+          fontSize: '10px', color: '#889999',
         }).setOrigin(1, 0));
 
         // 點擊裝備中的技能 → 進入交換模式
@@ -1622,7 +1635,7 @@ export class OverworldScene extends Phaser.Scene {
 
         if (isSelected) {
           container.add(this.add.text(camW - 15, y + 9, '<- 點選下方技能替換', {
-            fontSize: '7px', color: '#ff6644',
+            fontSize: '10px', color: '#ff6644',
           }).setOrigin(1, 0));
         }
       });
@@ -1633,7 +1646,7 @@ export class OverworldScene extends Phaser.Scene {
         ? `-- 技能池 (${m.learnedSkills.length}) 點擊可替換 --`
         : '-- 技能池 (空) --';
       container.add(this.add.text(15, poolY, poolLabel, {
-        fontSize: '9px', color: swapMode ? '#ff6644' : '#667788',
+        fontSize: '13px', color: swapMode ? '#ff6644' : '#667788',
       }));
 
       m.learnedSkills.forEach((s, i) => {
@@ -1642,12 +1655,12 @@ export class OverworldScene extends Phaser.Scene {
         const color = swapMode ? '#44ccff' : '#556677';
 
         const poolBtn = this.add.text(15, y, `  ${s.name} (${s.element})`, {
-          fontSize: '8px', color,
+          fontSize: '11px', color,
         }).setInteractive({ useHandCursor: true });
 
         container.add(poolBtn);
         container.add(this.add.text(camW - 15, y, `威力:${s.power} 命中:${s.accuracy} PP:${s.pp} ${effectTag}`, {
-          fontSize: '7px', color: '#556677',
+          fontSize: '10px', color: '#556677',
         }).setOrigin(1, 0));
 
         poolBtn.on('pointerdown', () => {
@@ -1666,7 +1679,7 @@ export class OverworldScene extends Phaser.Scene {
 
       // 返回按鈕
       const backBtn = this.add.text(camW / 2, camH - 20, '<- 返回背包', {
-        fontSize: '10px', color: '#ffcc44',
+        fontSize: '14px', color: '#ffcc44',
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       backBtn.on('pointerdown', () => {
         container.destroy();
@@ -1718,7 +1731,7 @@ export class OverworldScene extends Phaser.Scene {
     container.add(bg);
 
     container.add(this.add.text(camW / 2, 15, `— 靈獸圖鑑 ${state.caughtIds.size}/10 —`, {
-      fontSize: '13px', fontFamily: 'serif', color: '#ffcc44',
+      fontSize: '17px', fontFamily: 'serif', color: '#ffcc44',
     }).setOrigin(0.5));
 
     MONSTERS.forEach((m, i) => {
@@ -1732,21 +1745,21 @@ export class OverworldScene extends Phaser.Scene {
         container.add(sprite);
 
         container.add(this.add.text(30, y, `${m.name}　${m.element}`, {
-          fontSize: '10px', color: '#ffffff',
+          fontSize: '14px', color: '#ffffff',
         }));
         container.add(this.add.text(30, y + 11, m.description, {
-          fontSize: '8px', color: '#667788',
+          fontSize: '11px', color: '#667788',
           wordWrap: { width: camW - 60 },
         }));
       } else {
         container.add(this.add.text(30, y + 3, '？？？', {
-          fontSize: '10px', color: '#334455',
+          fontSize: '14px', color: '#334455',
         }));
       }
     });
 
     const closeBtn = this.add.text(camW / 2, camH - 20, '關閉', {
-      fontSize: '11px', color: '#ffcc44',
+      fontSize: '15px', color: '#ffcc44',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
     container.add(closeBtn);

@@ -22,43 +22,43 @@ export class IntroScene extends Phaser.Scene {
       {
         text: '太古紀元，混沌值：∞。\n天地未分，萬靈胚胎沉眠其中。',
         delay: 0,
-        style: { fontSize: '15px', color: '#667788', fontFamily: 'serif' },
+        style: { fontSize: '21px', color: '#667788', fontFamily: 'serif' },
       },
       {
         text: '盤古斬開天地，女媧摶土造人。\n靈獸與人立下第一契約——共生協議，效力：永久。',
         delay: 0,
-        style: { fontSize: '14px', color: '#8899aa', fontFamily: 'serif' },
+        style: { fontSize: '20px', color: '#8899aa', fontFamily: 'serif' },
       },
       {
         text: '《山海經》存檔四百餘種靈獸數據：\n窮奇【噬惡係數S級】、畢方【火靈親和度99】、\n鯤鵬【形態解放需求：境界突破×3】……',
         delay: 0,
-        style: { fontSize: '13px', color: '#aabbcc', fontFamily: 'serif' },
+        style: { fontSize: '26px', color: '#aabbcc', fontFamily: 'serif' },
       },
       {
         text: '千年侵蝕。靈脈衰退值每紀上升17%。\n契約鏈逐條斷裂，靈獸退化，人間遺忘。',
         delay: 0,
-        style: { fontSize: '14px', color: '#8899aa', fontFamily: 'serif' },
+        style: { fontSize: '20px', color: '#8899aa', fontFamily: 'serif' },
       },
       {
         text: '冥界封印：第九重破除。\n幽羅冥王降臨——初階討伐成功率：0.3%。',
         delay: 0,
-        style: { fontSize: '15px', color: '#ff6655', fontFamily: 'serif' },
+        style: { fontSize: '21px', color: '#ff6655', fontFamily: 'serif' },
       },
       {
         text: '唯一解法：山海之力全解鎖。\n路徑：靈獸師主線，難度：地獄。',
         delay: 0,
-        style: { fontSize: '15px', color: '#ffcc44', fontFamily: 'serif' },
+        style: { fontSize: '21px', color: '#ffcc44', fontFamily: 'serif' },
       },
       {
         text: '你，便是最後的靈獸師。\n\n【不。是第二次了。】',
         delay: 0,
-        style: { fontSize: '18px', color: '#ffffff', fontFamily: 'serif', fontStyle: 'bold' },
+        style: { fontSize: '26px', color: '#ffffff', fontFamily: 'serif', fontStyle: 'bold' },
       },
     ];
 
     // 跳過提示
     const skipText = this.add.text(width - 20, height - 20, '按任意鍵跳過', {
-      fontSize: '10px', color: '#445566',
+      fontSize: '14px', color: '#445566',
     }).setOrigin(1, 1).setAlpha(0);
 
     this.tweens.add({
@@ -144,7 +144,7 @@ export class IntroScene extends Phaser.Scene {
     const line = this.storyLines[index];
 
     const textObj = this.add.text(width / 2, height / 2, line.text, {
-      fontSize: '16px',
+      fontSize: '22px',
       color: '#aabbcc',
       fontFamily: 'serif',
       align: 'center',
@@ -196,11 +196,11 @@ export class IntroScene extends Phaser.Scene {
 
     // 標題閃現
     const title = this.add.text(width / 2, height / 2 - 20, '山海經', {
-      fontSize: '48px', fontFamily: 'serif', color: '#ffcc44', fontStyle: 'bold',
+      fontSize: '64px', fontFamily: 'serif', color: '#ffcc44', fontStyle: 'bold',
     }).setOrigin(0.5).setAlpha(0).setDepth(20);
 
     const subtitle = this.add.text(width / 2, height / 2 + 30, '靈 獸 錄', {
-      fontSize: '24px', fontFamily: 'serif', color: '#aabbcc',
+      fontSize: '32px', fontFamily: 'serif', color: '#aabbcc',
     }).setOrigin(0.5).setAlpha(0).setDepth(20);
 
     this.tweens.add({

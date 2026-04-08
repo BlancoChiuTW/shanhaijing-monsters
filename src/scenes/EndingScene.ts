@@ -108,20 +108,20 @@ export class EndingScene extends Phaser.Scene {
 
     // 標題
     const title = this.add.text(width / 2, 35, '山海靈獸師', {
-      fontSize: '28px', fontFamily: 'serif', color: cfg.titleColor, fontStyle: 'bold',
+      fontSize: '38px', fontFamily: 'serif', color: cfg.titleColor, fontStyle: 'bold',
     }).setOrigin(0.5).setAlpha(0);
 
     this.tweens.add({ targets: title, alpha: 1, duration: 1500 });
 
     // 結局類型副標題
     const endLabel = this.add.text(width / 2, 65, cfg.title, {
-      fontSize: '18px', fontFamily: 'serif', color: cfg.subtitleColor,
+      fontSize: '24px', fontFamily: 'serif', color: cfg.subtitleColor,
     }).setOrigin(0.5).setAlpha(0);
 
     this.tweens.add({ targets: endLabel, alpha: 1, duration: 1500, delay: 300 });
 
     const endSubLabel = this.add.text(width / 2, 88, cfg.subtitle, {
-      fontSize: '12px', fontFamily: 'serif', color: cfg.subtitleColor,
+      fontSize: '16px', fontFamily: 'serif', color: cfg.subtitleColor,
     }).setOrigin(0.5).setAlpha(0);
 
     this.tweens.add({ targets: endSubLabel, alpha: 1, duration: 1200, delay: 600 });
@@ -130,7 +130,7 @@ export class EndingScene extends Phaser.Scene {
     let delay = 1500;
     cfg.narratives.forEach((line, i) => {
       const txt = this.add.text(width / 2, 110 + i * 16, line, {
-        fontSize: '10px', color: '#cccccc', align: 'center',
+        fontSize: '14px', color: '#cccccc', align: 'center',
       }).setOrigin(0.5).setAlpha(0);
       this.tweens.add({ targets: txt, alpha: 1, duration: 600, delay });
       delay += 300;
@@ -142,7 +142,7 @@ export class EndingScene extends Phaser.Scene {
     if (this.endingType !== 'bad') {
       const teamLabelY = 110 + cfg.narratives.length * 16 + 8;
       const teamLabel = this.add.text(width / 2, teamLabelY, '— 你的隊伍 —', {
-        fontSize: '10px', color: '#888888',
+        fontSize: '14px', color: '#888888',
       }).setOrigin(0.5).setAlpha(0);
       this.tweens.add({ targets: teamLabel, alpha: 1, duration: 600, delay });
       delay += 300;
@@ -161,11 +161,11 @@ export class EndingScene extends Phaser.Scene {
         if (this.endingType === 'normal') sprite.setTint(0x555555);
 
         const info = this.add.text(72, y, `${shinyTag}${fusedTag}${m.nickname}${deadTag}`, {
-          fontSize: '10px', color: this.endingType === 'normal' ? '#666666' : '#ffffff', fontStyle: 'bold',
+          fontSize: '14px', color: this.endingType === 'normal' ? '#666666' : '#ffffff', fontStyle: 'bold',
         }).setAlpha(0);
 
         const cultText = this.add.text(72, y + 13, `${cult.displayName}  HP:${m.maxHp} 攻:${m.atk} 防:${m.def} 速:${m.spd}`, {
-          fontSize: '7px', color: this.endingType === 'normal' ? '#555555' : cult.color,
+          fontSize: '10px', color: this.endingType === 'normal' ? '#555555' : cult.color,
         }).setAlpha(0);
 
         this.tweens.add({ targets: [sprite, info, cultText], alpha: 1, duration: 500, delay });
@@ -179,21 +179,21 @@ export class EndingScene extends Phaser.Scene {
     const caught = state.caughtIds.size;
     const total = MONSTERS.length;
     const dexText = this.add.text(width / 2, height - 65, `靈獸圖鑑：${caught}/${total}`, {
-      fontSize: '12px', color: '#ffcc44',
+      fontSize: '16px', color: '#ffcc44',
     }).setOrigin(0.5).setAlpha(0);
 
     this.tweens.add({ targets: dexText, alpha: 1, duration: 800, delay });
 
     // 製作人員
     const credits = this.add.text(width / 2, height - 45, 'v0.4 Demo — BlancoChiuTW × Claude | Icons: game-icons.net (CC BY 3.0)', {
-      fontSize: '8px', color: '#445566',
+      fontSize: '11px', color: '#445566',
     }).setOrigin(0.5).setAlpha(0);
 
     this.tweens.add({ targets: credits, alpha: 1, duration: 800, delay: delay + 300 });
 
     // 返回按鈕
     const backBtn = this.add.text(width / 2, height - 22, '【 返回主選單 】', {
-      fontSize: '12px', color: '#667788',
+      fontSize: '16px', color: '#667788',
     }).setOrigin(0.5).setAlpha(0).setInteractive({ useHandCursor: true });
 
     backBtn.on('pointerover', () => backBtn.setColor('#ffcc44'));
