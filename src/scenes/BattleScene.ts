@@ -43,8 +43,8 @@ export class BattleScene extends Phaser.Scene {
   private messageText!: Phaser.GameObjects.Text;
   private playerSprite!: Phaser.GameObjects.Image;
   private enemySprite!: Phaser.GameObjects.Image;
-  private actionButtons: Phaser.GameObjects.Text[] = [];
-  private skillButtons: Phaser.GameObjects.Text[] = [];
+  private actionButtons: Phaser.GameObjects.GameObject[] = [];
+  private skillButtons: Phaser.GameObjects.GameObject[] = [];
   private isAnimating = false;
   private playerSpriteOriginX = 0;
   private playerSpriteOriginY = 0;
@@ -186,27 +186,34 @@ export class BattleScene extends Phaser.Scene {
     this.messageText.setText('選擇行動：');
 
     const { width, height } = this.scale;
-    const actions = [
-      { text: '[技能] 攻擊', action: () => this.showSkills() },
-      { text: '[換獸] 替換', action: () => this.showSwitchMenu() },
+    const actions: { icon: string; text: string; action: () => void }[] = [
+      { icon: 'icon_skill', text: '技能', action: () => this.showSkills() },
+      { icon: 'icon_swap', text: '換獸', action: () => this.showSwitchMenu() },
     ];
 
     if (this.battleType === 'wild') {
-      actions.push({ text: '[捕獲] 靈符', action: () => this.tryCatch() });
-      actions.push({ text: '[逃跑] 撤退', action: () => this.tryRun() });
+      actions.push({ icon: 'icon_capture', text: '捕獲', action: () => this.tryCatch() });
+      actions.push({ icon: 'icon_run', text: '逃跑', action: () => this.tryRun() });
     } else {
-      actions.push({ text: '[認輸] 撤退', action: () => this.tryRun() });
+      actions.push({ icon: 'icon_run', text: '認輸', action: () => this.tryRun() });
     }
 
     actions.forEach((act, i) => {
       const x = width / 2 - 120 + (i % 2) * 160;
       const y = height - 65 + Math.floor(i / 2) * 28;
-      const btn = this.add.text(x, y, act.text, {
+      // 圖示
+      const icon = this.add.image(x, y + 8, act.icon);
+      icon.setDisplaySize(16, 16).setOrigin(0, 0.5);
+      this.actionButtons.push(icon);
+      // 文字
+      const btn = this.add.text(x + 20, y, act.text, {
         fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
       }).setInteractive({ useHandCursor: true });
-      btn.on('pointerover', () => btn.setColor('#ffcc44'));
-      btn.on('pointerout', () => btn.setColor('#ffffff'));
+      btn.on('pointerover', () => { btn.setColor('#ffcc44'); icon.setTint(0xffcc44); });
+      btn.on('pointerout', () => { btn.setColor('#ffffff'); icon.clearTint(); });
       btn.on('pointerdown', act.action);
+      icon.setInteractive({ useHandCursor: true });
+      icon.on('pointerdown', act.action);
       this.actionButtons.push(btn);
     });
   }

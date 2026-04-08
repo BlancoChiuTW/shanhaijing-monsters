@@ -113,7 +113,7 @@ export class EndingScene extends Phaser.Scene {
     });
 
     // 製作人員
-    const credits = this.add.text(width / 2, height - 40, 'v0.2 Demo — BlancoChiuTW × Claude', {
+    const credits = this.add.text(width / 2, height - 40, 'v0.3 Demo — BlancoChiuTW x Claude | Icons: game-icons.net (CC BY 3.0)', {
       fontSize: '10px', color: '#445566',
     }).setOrigin(0.5).setAlpha(0);
 

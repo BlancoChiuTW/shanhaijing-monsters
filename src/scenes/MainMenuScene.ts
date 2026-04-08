@@ -73,7 +73,7 @@ export class MainMenuScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // Credits
-    this.add.text(width / 2, height - 30, 'v0.2 Demo — BlancoChiuTW', {
+    this.add.text(width / 2, height - 30, 'v0.3 Demo — BlancoChiuTW | Icons: game-icons.net (CC BY 3.0)', {
       fontSize: '12px',
       color: '#445566',
     }).setOrigin(0.5);

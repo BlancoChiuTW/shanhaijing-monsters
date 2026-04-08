@@ -40,6 +40,12 @@ export class BootScene extends Phaser.Scene {
     this.load.image('npc_fusion', 'assets/characters/npc_fusion.png');
     this.load.image('npc_trainer', 'assets/characters/npc_trainer.png');
     this.load.image('npc_default', 'assets/characters/npc_default.png');
+
+    // 載入 UI 圖示 (game-icons.net CC BY 3.0)
+    const icons = ['skill', 'swap', 'capture', 'run', 'backpack', 'absorb', 'pokedex', 'heal', 'save', 'close', 'npc_heal', 'npc_fusion', 'npc_battle'];
+    for (const ic of icons) {
+      this.load.image(`icon_${ic}`, `assets/icons/${ic}.png`);
+    }
   }
 
   create(): void {

@@ -112,17 +112,16 @@ export class OverworldScene extends Phaser.Scene {
       }).setOrigin(0.5, 1);
       container.add(label);
 
-      // NPC 類型圖示
-      let icon = '';
-      if (npc.npcType === 'healer') icon = '[療]';
-      else if (npc.npcType === 'fusion') icon = '[煉]';
-      else if (npc.npcType === 'trainer') icon = '[戰]';
+      // NPC 類型圖示 (使用 icon 圖片)
+      let iconKey = '';
+      if (npc.npcType === 'healer') iconKey = 'icon_npc_heal';
+      else if (npc.npcType === 'fusion') iconKey = 'icon_npc_fusion';
+      else if (npc.npcType === 'trainer') iconKey = 'icon_npc_battle';
 
-      if (icon) {
-        const iconText = this.add.text(TILE_SIZE / 2 - 4, -TILE_SIZE / 2 + 2, icon, {
-          fontSize: '8px', color: '#ffcc44',
-        }).setOrigin(0.5);
-        container.add(iconText);
+      if (iconKey) {
+        const iconImg = this.add.image(TILE_SIZE / 2 - 4, -TILE_SIZE / 2 + 4, iconKey);
+        iconImg.setDisplaySize(10, 10);
+        container.add(iconImg);
       }
 
       this.npcSprites.push(container);
@@ -717,21 +716,30 @@ export class OverworldScene extends Phaser.Scene {
     }).setOrigin(0.5));
 
     const options = [
-      { text: '[背包] 靈獸背包', action: () => this.showBackpack(container) },
-      { text: '[練化] 靈獸互吃', action: () => this.showAbsorptionMenu(container) },
-      { text: '[圖鑑] 靈獸圖鑑', action: () => this.showPokedex(container) },
-      { text: '[回復] 回復全隊', action: () => { healTeam(); this.updateInfoText(); closeMenu(); this.showNotification('全隊已恢復！', 0x44ff88); } },
-      { text: '[存檔] 儲存遊戲', action: () => { saveGame(); closeMenu(); this.showNotification('遊戲已儲存！', 0x44aaff); } },
-      { text: '[關閉] 返回遊戲', action: () => closeMenu() },
+      { icon: 'icon_backpack', text: '靈獸背包', action: () => this.showBackpack(container) },
+      { icon: 'icon_absorb', text: '練化互吃', action: () => this.showAbsorptionMenu(container) },
+      { icon: 'icon_pokedex', text: '靈獸圖鑑', action: () => this.showPokedex(container) },
+      { icon: 'icon_heal', text: '回復全隊', action: () => { healTeam(); this.updateInfoText(); closeMenu(); this.showNotification('全隊已恢復！', 0x44ff88); } },
+      { icon: 'icon_save', text: '儲存遊戲', action: () => { saveGame(); closeMenu(); this.showNotification('遊戲已儲存！', 0x44aaff); } },
+      { icon: 'icon_close', text: '返回遊戲', action: () => closeMenu() },
     ];
 
     options.forEach((opt, i) => {
-      const btn = this.add.text(camW / 2, camH / 2 - 42 + i * 28, opt.text, {
+      const y = camH / 2 - 42 + i * 28;
+      // 圖示
+      const icon = this.add.image(camW / 2 - 70, y, opt.icon);
+      icon.setDisplaySize(16, 16);
+      container.add(icon);
+      // 文字
+      const btn = this.add.text(camW / 2 - 52, y, opt.text, {
         fontSize: '13px', color: '#ffffff',
-      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-      btn.on('pointerover', () => btn.setColor('#ffcc44'));
-      btn.on('pointerout', () => btn.setColor('#ffffff'));
+      }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => { btn.setColor('#ffcc44'); icon.setTint(0xffcc44); });
+      btn.on('pointerout', () => { btn.setColor('#ffffff'); icon.clearTint(); });
       btn.on('pointerdown', opt.action);
+      // 讓圖示也可點擊
+      icon.setInteractive({ useHandCursor: true });
+      icon.on('pointerdown', opt.action);
       container.add(btn);
     });
 
