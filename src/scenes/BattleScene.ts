@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { type MonsterInstance, type Skill, type Element, type CultivationMethod, type PlayerCombatStats, getTemplate, getStatStageMul, getCultivation, PLAYER_SKILLS, REFINE_PLAYER_SKILLS, MONSTERS, createTransformedInstance } from '../data/monsters';
+import { type MonsterInstance, type Skill, type Element, type CultivationMethod, type PlayerCombatStats, getTemplate, getTypeMultiplier, getStatStageMul, getCultivation, PLAYER_SKILLS, REFINE_PLAYER_SKILLS, MONSTERS, createTransformedInstance } from '../data/monsters';
 import { calculateDamage, calculateCatchRate, getExpReward, applyExp, applyBuffSkill, enemyChooseAction, resetStatStages, calculatePlayerDamage, attemptRefinement, processStatusDamage, decayStatStages, clearStatus } from '../utils/battle';
-import { getState, addMonsterToTeam, getFirstAliveIndex, applyPlayerExp, recalcPlayerStats, addSeenMonster, isTeamFull } from '../utils/gameState';
+import { getState, addMonsterToTeam, getFirstAliveIndex, applyPlayerExp, recalcPlayerStats, addSeenMonster, isTeamFull, saveGame } from '../utils/gameState';
 
 interface BattleData {
   type: 'wild' | 'trainer' | 'deathmatch';
@@ -244,8 +244,10 @@ export class BattleScene extends Phaser.Scene {
     if (this.enemyIsHuman && this.enemyPlayerCombat) {
       this.enemyInfoText.setText(`${this.trainerName} Lv.${this.enemyPlayerCombat.level}\nHP:${this.enemyPlayerCombat.hp}/${this.enemyPlayerCombat.maxHp}`);
     } else {
+      const eTemplate = getTemplate(this.enemyMonster.templateId);
+      const eElem = eTemplate.element;
       this.enemyInfoText.setText(
-        `${eShiny}${this.enemyMonster.nickname} ${eCult.displayName}${eStatusTag}\nHP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}${eStages}`
+        `${eShiny}${this.enemyMonster.nickname}(${eElem}) ${eCult.displayName}${eStatusTag}\nHP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}${eStages}`
       );
     }
 
@@ -339,7 +341,11 @@ export class BattleScene extends Phaser.Scene {
     }
 
     if (this.battleType === 'wild') {
-      actions.push({ icon: 'icon_capture', text: '捕獲', action: () => this.tryCatch() });
+      const eTempl = getTemplate(this.enemyMonster.templateId);
+      const hpRatio = this.enemyMonster.hp / this.enemyMonster.maxHp;
+      const estRate = eTempl.catchRate * (1 - hpRatio * 0.6) / 255;
+      const catchHint = estRate >= 0.5 ? '◎' : estRate >= 0.2 ? '○' : '△';
+      actions.push({ icon: 'icon_capture', text: `捕獲${catchHint}`, action: () => this.tryCatch() });
       actions.push({ icon: 'icon_run', text: '逃跑', action: () => this.tryRun() });
     } else if (!this.isBoss) {
       actions.push({ icon: 'icon_run', text: '認輸', action: () => this.tryRun() });
@@ -365,9 +371,31 @@ export class BattleScene extends Phaser.Scene {
 
   private showSkills(): void {
     this.clearButtons();
-    this.messageText.setText('選擇技能：');
 
     const { width, height } = this.scale;
+
+    // PP 全耗盡 → 掙扎
+    const allPpEmpty = this.playerMonster.skills.every(s => s.currentPp <= 0);
+    if (allPpEmpty) {
+      this.messageText.setText('技能全部耗盡！');
+      const btn = this.add.text(width / 2, height - 80, '掙扎（40威力，自傷1/4）', {
+        fontSize: '14px', color: '#aa4444',
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setColor('#ffcc44'));
+      btn.on('pointerout', () => btn.setColor('#aa4444'));
+      btn.on('pointerdown', () => this.executePlayerTurn(-1));
+      this.skillButtons.push(btn);
+      const back = this.add.text(width / 2, height - 18, '[返回]', {
+        fontSize: '14px', color: '#889999',
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      back.on('pointerdown', () => this.showActions());
+      this.skillButtons.push(back);
+      return;
+    }
+
+    this.messageText.setText('選擇技能：');
+
+    const defTemplate = getTemplate(this.enemyMonster.templateId);
 
     this.playerMonster.skills.forEach((s, i) => {
       const x = width / 2 - 140 + (i % 2) * 200;
@@ -375,7 +403,9 @@ export class BattleScene extends Phaser.Scene {
       const elemColor = ELEMENT_COLORS[s.skill.element];
       const elemHex = '#' + elemColor.toString(16).padStart(6, '0');
       const effectTag = s.skill.effect ? this.getEffectTag(s.skill) : '';
-      const label = `${s.skill.name}(${s.skill.element}${effectTag}) ${s.currentPp}/${s.skill.pp}`;
+      const mul = s.skill.power > 0 ? getTypeMultiplier(s.skill.element, defTemplate.element) : 1;
+      const matchTag = mul > 1 ? '◎' : mul < 1 ? '△' : '';
+      const label = `${matchTag}${s.skill.name}(${s.skill.element}${effectTag}) ${s.currentPp}/${s.skill.pp}`;
       const color = s.currentPp > 0 ? elemHex : '#555555';
       const btn = this.add.text(x, y, label, {
         fontSize: '14px', color,
@@ -606,12 +636,33 @@ export class BattleScene extends Phaser.Scene {
     return Math.random() < 0.5;
   }
 
+  /** 取得敵方本回合使用的技能（含掙扎 fallback） */
+  private getEnemySkillAction(): { skill: Skill; decPp: () => void } {
+    const idx = enemyChooseAction(this.enemyMonster, this.playerMonster);
+    if (idx === -1) {
+      return { skill: BattleScene.STRUGGLE_SKILL, decPp: () => {} };
+    }
+    const s = this.enemyMonster.skills[idx];
+    return { skill: s.skill, decPp: () => { s.currentPp--; } };
+  }
+
+  /** 掙扎技能常數 */
+  private static readonly STRUGGLE_SKILL: Skill = {
+    name: '掙扎', element: '金', power: 40, accuracy: 100, pp: 1,
+    description: '技能耗盡的最後掙扎',
+    effect: { type: 'recoil', percent: 25 },
+  };
+
   private executePlayerTurn(skillIndex: number): void {
     this.isAnimating = true;
     this.clearButtons();
 
-    const playerSkill = this.playerMonster.skills[skillIndex];
-    playerSkill.currentPp--;
+    // 掙扎（skillIndex === -1）
+    const isStruggle = skillIndex === -1;
+    const playerSkill = isStruggle
+      ? { skill: BattleScene.STRUGGLE_SKILL, currentPp: 1, learnLevel: 1 }
+      : this.playerMonster.skills[skillIndex];
+    if (!isStruggle) playerSkill.currentPp--;
 
     // 敵方是人類（死鬥人類階段）：使用 calculatePlayerDamage
     if (this.enemyIsHuman && this.enemyPlayerCombat) {
@@ -619,17 +670,16 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
-    const enemySkill = this.enemyMonster.skills[enemySkillIndex];
+    const enemyAction = this.getEnemySkillAction();
 
-    const playerFirst = this.determineFirstAttacker(playerSkill.skill, enemySkill.skill);
+    const playerFirst = this.determineFirstAttacker(playerSkill.skill, enemyAction.skill);
 
     if (playerFirst) {
       this.doTurnAction(this.playerMonster, this.enemyMonster, playerSkill.skill, true, () => {
         if (this.enemyMonster.hp <= 0) { this.onEnemyDefeated(); return; }
         if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
-        enemySkill.currentPp--;
-        this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+        enemyAction.decPp();
+        this.doTurnAction(this.enemyMonster, this.playerMonster, enemyAction.skill, false, () => {
           if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
           if (this.enemyMonster.hp <= 0) { this.onEnemyDefeated(); return; }
           this.processEndOfTurn(() => {
@@ -639,8 +689,8 @@ export class BattleScene extends Phaser.Scene {
         });
       });
     } else {
-      enemySkill.currentPp--;
-      this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+      enemyAction.decPp();
+      this.doTurnAction(this.enemyMonster, this.playerMonster, enemyAction.skill, false, () => {
         if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
         if (this.enemyMonster.hp <= 0) { this.onEnemyDefeated(); return; }
         this.doTurnAction(this.playerMonster, this.enemyMonster, playerSkill.skill, true, () => {
@@ -942,6 +992,8 @@ export class BattleScene extends Phaser.Scene {
             if (nextAlive >= 0) {
               this.enemyIndex = nextAlive;
               this.enemyMonster = this.enemyTeam[this.enemyIndex];
+              resetStatStages(this.enemyMonster);
+              clearStatus(this.enemyMonster);
               this.enemySprite.setTexture(`monster_${this.enemyMonster.templateId}`);
               this.enemySprite.setAlpha(1);
               this.enemySprite.setPosition(this.enemySpriteOriginX, this.enemySpriteOriginY);
@@ -970,6 +1022,8 @@ export class BattleScene extends Phaser.Scene {
           this.enemyIndex++;
           if (this.enemyIndex < this.enemyTeam.length) {
             this.enemyMonster = this.enemyTeam[this.enemyIndex];
+            resetStatStages(this.enemyMonster);
+            clearStatus(this.enemyMonster);
             this.enemySprite.setTexture(`monster_${this.enemyMonster.templateId}`);
             this.enemySprite.setAlpha(1);
             this.enemySprite.setPosition(this.enemySpriteOriginX, this.enemySpriteOriginY);
@@ -1022,6 +1076,7 @@ export class BattleScene extends Phaser.Scene {
           this.playerMonsterIndex = nextAliveIdx;
           this.playerMonster = state.team[nextAliveIdx];
           resetStatStages(this.playerMonster);
+          clearStatus(this.playerMonster);
           this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
           this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
           this.updateInfoPanels();
@@ -1094,6 +1149,7 @@ export class BattleScene extends Phaser.Scene {
       this.playerMonsterIndex = nextAlive;
       this.playerMonster = state.team[nextAlive];
       resetStatStages(this.playerMonster);
+      clearStatus(this.playerMonster);
       this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
       this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
       this.updateInfoPanels();
@@ -1151,10 +1207,9 @@ export class BattleScene extends Phaser.Scene {
             });
           } else {
             this.showMessage('捕獲失敗！靈獸掙脫了！', () => {
-              const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
-              const enemySkill = this.enemyMonster.skills[enemySkillIndex];
-              enemySkill.currentPp--;
-              this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+              const ea = this.getEnemySkillAction();
+              ea.decPp();
+              this.doTurnAction(this.enemyMonster, this.playerMonster, ea.skill, false, () => {
                 if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
                 this.isAnimating = false;
                 this.showActions();
@@ -1175,10 +1230,9 @@ export class BattleScene extends Phaser.Scene {
         this.showMessage('成功逃跑了！', () => this.endBattle());
       } else {
         this.showMessage('逃跑失敗！', () => {
-          const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
-          const enemySkill = this.enemyMonster.skills[enemySkillIndex];
-          enemySkill.currentPp--;
-          this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+          const ea = this.getEnemySkillAction();
+          ea.decPp();
+          this.doTurnAction(this.enemyMonster, this.playerMonster, ea.skill, false, () => {
             if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
             this.isAnimating = false;
             this.showActions();
@@ -1216,6 +1270,7 @@ export class BattleScene extends Phaser.Scene {
           this.playerMonsterIndex = i;
           this.playerMonster = m;
           resetStatStages(this.playerMonster);
+          clearStatus(this.playerMonster);
           this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
           this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
           this.updateInfoPanels();
@@ -1224,10 +1279,9 @@ export class BattleScene extends Phaser.Scene {
             if (this.isPlayerCombatant) {
               this.executeEnemyCombatantTurn();
             } else {
-              const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
-              const enemySkill = this.enemyMonster.skills[enemySkillIndex];
-              enemySkill.currentPp--;
-              this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+              const ea = this.getEnemySkillAction();
+              ea.decPp();
+              this.doTurnAction(this.enemyMonster, this.playerMonster, ea.skill, false, () => {
                 if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
                 this.isAnimating = false;
                 this.showActions();
@@ -1481,12 +1535,11 @@ export class BattleScene extends Phaser.Scene {
     const targetHuman = this.playerCombat && this.playerCombat.hp > 0 && Math.random() < 0.4;
 
     if (targetHuman && this.playerCombat) {
-      const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
-      const enemySkill = this.enemyMonster.skills[enemySkillIndex];
-      enemySkill.currentPp--;
+      const eaCombat = this.getEnemySkillAction();
+      eaCombat.decPp();
 
-      if (Math.random() * 100 > enemySkill.skill.accuracy) {
-        this.showMessage(`${this.enemyMonster.nickname} 的 ${enemySkill.skill.name} 沒有命中！`, () => {
+      if (Math.random() * 100 > eaCombat.skill.accuracy) {
+        this.showMessage(`${this.enemyMonster.nickname} 的 ${eaCombat.skill.name} 沒有命中！`, () => {
           this.playerCombat!.isBlocking = false;
           this.isAnimating = false;
           this.showActions();
@@ -1497,7 +1550,7 @@ export class BattleScene extends Phaser.Scene {
       const result = calculatePlayerDamage(
         this.enemyMonster.atk, this.enemyMonster.atkStage, this.enemyMonster.level, this.enemyMonster.nickname,
         this.playerCombat.def, this.playerCombat.defStage, this.playerCombat.isBlocking,
-        enemySkill.skill.power, enemySkill.skill.name, this.playerCombat.level,
+        eaCombat.skill.power, eaCombat.skill.name, this.playerCombat.level,
       );
       this.playerCombat.hp = Math.max(0, this.playerCombat.hp - result.damage);
       this.playerCombat.isBlocking = false;
@@ -1511,10 +1564,9 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // 敵寵打玩家寵
-    const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
-    const enemySkill = this.enemyMonster.skills[enemySkillIndex];
-    enemySkill.currentPp--;
-    this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+    const eaPet = this.getEnemySkillAction();
+    eaPet.decPp();
+    this.doTurnAction(this.enemyMonster, this.playerMonster, eaPet.skill, false, () => {
       if (this.playerMonster.hp <= 0) {
         const nextAlive = getFirstAliveIndex();
         if (nextAlive === -1) {
@@ -1523,6 +1575,7 @@ export class BattleScene extends Phaser.Scene {
           this.playerMonsterIndex = nextAlive;
           this.playerMonster = getState().team[nextAlive];
           resetStatStages(this.playerMonster);
+          clearStatus(this.playerMonster);
           this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
           this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
           this.updateInfoPanels();
@@ -1533,8 +1586,10 @@ export class BattleScene extends Phaser.Scene {
           return;
         }
       }
-      this.isAnimating = false;
-      this.showActions();
+      this.processEndOfTurn(() => {
+        this.isAnimating = false;
+        this.showActions();
+      });
     });
   }
 
@@ -1599,16 +1654,16 @@ export class BattleScene extends Phaser.Scene {
           this.isTransformed = true;
           this.transformedForm = newForm;
           this.playerMonster = newForm;
+          clearStatus(this.playerMonster);
           // 更新圖示
           this.playerSprite.setTexture(`monster_${id}`);
           this.updateInfoPanels();
           this.clearButtons();
           this.showMessage(`你變身為 ${template.name}！(HP ${Math.floor(hpRatio * 100)}%)`, () => {
             // 變身消耗回合，敵方行動
-            const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
-            const enemySkill = this.enemyMonster.skills[enemySkillIndex];
-            enemySkill.currentPp--;
-            this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+            const ea = this.getEnemySkillAction();
+            ea.decPp();
+            this.doTurnAction(this.enemyMonster, this.playerMonster, ea.skill, false, () => {
               if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
               this.isAnimating = false;
               this.showActions();
@@ -1652,15 +1707,15 @@ export class BattleScene extends Phaser.Scene {
           this.playerMonsterIndex = i;
           this.playerMonster = m;
           resetStatStages(this.playerMonster);
+          clearStatus(this.playerMonster);
           this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
           this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
           this.updateInfoPanels();
           this.clearButtons();
           this.showMessage(`解除變身！派出 ${m.nickname}！`, () => {
-            const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
-            const enemySkill = this.enemyMonster.skills[enemySkillIndex];
-            enemySkill.currentPp--;
-            this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+            const ea = this.getEnemySkillAction();
+            ea.decPp();
+            this.doTurnAction(this.enemyMonster, this.playerMonster, ea.skill, false, () => {
               if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
               this.isAnimating = false;
               this.showActions();
@@ -1818,12 +1873,11 @@ export class BattleScene extends Phaser.Scene {
       });
     } else {
       // 敵方靈寵攻擊玩家人類
-      const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
-      const enemySkill = this.enemyMonster.skills[enemySkillIndex];
-      enemySkill.currentPp--;
+      const ea = this.getEnemySkillAction();
+      ea.decPp();
 
-      if (Math.random() * 100 > enemySkill.skill.accuracy) {
-        this.showMessage(`${this.enemyMonster.nickname} 的 ${enemySkill.skill.name} 沒有命中！`, () => {
+      if (Math.random() * 100 > ea.skill.accuracy) {
+        this.showMessage(`${this.enemyMonster.nickname} 的 ${ea.skill.name} 沒有命中！`, () => {
           this.playerCombat!.isBlocking = false;
           this.isAnimating = false;
           this.showActions();
@@ -1833,7 +1887,7 @@ export class BattleScene extends Phaser.Scene {
       const result = calculatePlayerDamage(
         this.enemyMonster.atk, this.enemyMonster.atkStage, this.enemyMonster.level, this.enemyMonster.nickname,
         this.playerCombat.def, this.playerCombat.defStage, this.playerCombat.isBlocking,
-        enemySkill.skill.power, enemySkill.skill.name, this.playerCombat.level,
+        ea.skill.power, ea.skill.name, this.playerCombat.level,
       );
       this.playerCombat.hp = Math.max(0, this.playerCombat.hp - result.damage);
       this.playerCombat.isBlocking = false;
@@ -2067,7 +2121,11 @@ export class BattleScene extends Phaser.Scene {
 
     // 重置所有能力等級
     resetStatStages(this.playerMonster);
-    for (const e of this.enemyTeam) resetStatStages(e);
+    clearStatus(this.playerMonster);
+    for (const e of this.enemyTeam) { resetStatStages(e); clearStatus(e); }
+
+    // 自動存檔
+    saveGame();
 
     // 停止戰鬥 BGM
     this.sound.stopAll();

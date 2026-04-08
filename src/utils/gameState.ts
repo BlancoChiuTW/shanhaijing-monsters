@@ -170,6 +170,9 @@ export function loadGame(): PlayerState | null {
     if (m.defStage === undefined) m.defStage = 0;
     if (m.spdStage === undefined) m.spdStage = 0;
     if (!m.learnedSkills) m.learnedSkills = [];
+    if (m.statusCondition === undefined) m.statusCondition = null;
+    if (m.statusTurns === undefined) m.statusTurns = 0;
+    if (m.buffTurnCount === undefined) m.buffTurnCount = 0;
   }
   if (!state.cultivationMethod) state.cultivationMethod = '御獸神訣';
   if (!state.playerCombat) {

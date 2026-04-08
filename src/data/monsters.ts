@@ -371,7 +371,7 @@ export const MONSTERS: MonsterTemplate[] = [
       { learnLevel: 1, skill: { name: '蛇咬', element: '木', power: 55, accuracy: 95, pp: 18, description: '蛇首猛咬注入毒液', effect: { type: 'poison' } } },
       { learnLevel: 10, skill: { name: '龜甲', element: '水', power: 0, accuracy: 100, pp: 8, description: '縮入龜甲大幅提升防禦', effect: { type: 'statUp', stat: 'def', stages: 2 } } },
       { learnLevel: 18, skill: { name: '寒冰之壁', element: '水', power: 80, accuracy: 95, pp: 12, description: '築起冰牆砸向敵人' } },
-      { learnLevel: 25, skill: { name: '蛇毒注入', element: '木', power: 70, accuracy: 100, pp: 10, description: '注入腐蝕毒液削弱攻擊', effect: { type: 'poison' } } },
+      { learnLevel: 25, skill: { name: '蛇毒注入', element: '木', power: 70, accuracy: 100, pp: 10, description: '注入腐蝕毒液削弱攻擊', effect: { type: 'statDown', stat: 'atk', stages: 1 } } },
       { learnLevel: 32, skill: { name: '北方鎮守', element: '水', power: 110, accuracy: 85, pp: 5, description: '召喚北方之力重擊' } },
       { learnLevel: 36, skill: { name: '玄天護甲', element: '水', power: 0, accuracy: 100, pp: 3, description: '化神境龜甲極限防禦', effect: { type: 'statUp', stat: 'def', stages: 3 } } },
       { learnLevel: 40, skill: { name: '四象鎮壓', element: '水', power: 140, accuracy: 85, pp: 3, description: '渡劫境四象之力鎮壓萬物', effect: { type: 'statDown', stat: 'atk', stages: 2 } } },
@@ -475,6 +475,7 @@ export function createMonsterInstance(templateId: string, level: number): Monste
     skills: equipped,
     learnedSkills: pool,
     atkStage: 0, defStage: 0, spdStage: 0,
+    statusCondition: null, statusTurns: 0, buffTurnCount: 0,
   };
 }
 

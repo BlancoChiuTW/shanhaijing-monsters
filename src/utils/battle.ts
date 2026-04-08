@@ -174,7 +174,7 @@ export function enemyChooseAction(monster: MonsterInstance, defender?: MonsterIn
   const available = monster.skills
     .map((s, i) => ({ ...s, index: i }))
     .filter(s => s.currentPp > 0);
-  if (available.length === 0) return 0;
+  if (available.length === 0) return -1; // 掙扎
 
   const hpRatio = monster.hp / monster.maxHp;
 
