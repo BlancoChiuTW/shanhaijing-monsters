@@ -464,10 +464,10 @@ const MAP_DEFS: MapDef[] = [
     bgColor: 0x2a1a33,
     encounterRate: 40,
     wildEncounters: [
-      { monsterId: 'taotie', minLevel: 18, maxLevel: 24, weight: 30 },
-      { monsterId: 'xiangliu', minLevel: 20, maxLevel: 25, weight: 25 },
-      { monsterId: 'zhulong', minLevel: 18, maxLevel: 22, weight: 20 },
-      { monsterId: 'xuanwu', minLevel: 20, maxLevel: 25, weight: 25 },
+      { monsterId: 'taotie', minLevel: 22, maxLevel: 28, weight: 30 },
+      { monsterId: 'xiangliu', minLevel: 24, maxLevel: 30, weight: 25 },
+      { monsterId: 'zhulong', minLevel: 22, maxLevel: 27, weight: 20 },
+      { monsterId: 'xuanwu', minLevel: 24, maxLevel: 30, weight: 25 },
     ],
     npcs: [
       {
@@ -540,12 +540,12 @@ const MAP_DEFS: MapDef[] = [
       { x: 75, y: 147, targetMap: 'kunlun', targetX: 65, targetY: 17 },
     ],
     treasures: [
-      { id: 'yd_exp1', x: 60, y: 100, type: 'exp', amount: 800, label: '冥界靈魄' },
-      { id: 'yd_exp2', x: 90, y: 60, type: 'exp', amount: 700, label: '冥界靈魄' },
-      { id: 'yd_exp3', x: 50, y: 40, type: 'exp', amount: 900, label: '冥界靈魄' },
-      { id: 'yd_exp4', x: 100, y: 120, type: 'exp', amount: 750, label: '冥界靈魄' },
-      { id: 'yd_rare1', x: 80, y: 30, type: 'rare_monster', monsterId: 'xiangliu', monsterLevel: 27, label: '九首齊動。毒意瀰漫，退無可退。' },
-      { id: 'yd_rare2', x: 110, y: 80, type: 'rare_monster', monsterId: 'xuanwu', monsterLevel: 26, label: '龜蛇合鳴。威壓覆頂——轟。' },
+      { id: 'yd_exp1', x: 60, y: 100, type: 'exp', amount: 1000, label: '冥界靈魄' },
+      { id: 'yd_exp2', x: 90, y: 60, type: 'exp', amount: 900, label: '冥界靈魄' },
+      { id: 'yd_exp3', x: 50, y: 40, type: 'exp', amount: 1200, label: '冥界靈魄' },
+      { id: 'yd_exp4', x: 100, y: 120, type: 'exp', amount: 950, label: '冥界靈魄' },
+      { id: 'yd_rare1', x: 80, y: 30, type: 'rare_monster', monsterId: 'xiangliu', monsterLevel: 30, label: '九首齊動。毒意瀰漫，退無可退。' },
+      { id: 'yd_rare2', x: 110, y: 80, type: 'rare_monster', monsterId: 'xuanwu', monsterLevel: 29, label: '龜蛇合鳴。威壓覆頂——轟。' },
       { id: 'yd_heal1', x: 75, y: 100, type: 'heal', label: '冥界靈泉' },
       { id: 'yd_heal2', x: 60, y: 50, type: 'heal', label: '冥界靈泉' },
     ],

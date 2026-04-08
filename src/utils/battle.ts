@@ -122,18 +122,23 @@ export function calculateCatchRate(monster: MonsterInstance): boolean {
   return roll < modifiedRate;
 }
 
-export function getExpReward(defeated: MonsterInstance): number {
-  return Math.floor(defeated.level * 25 + 30);
+export function getExpReward(defeated: MonsterInstance, myLevel?: number): number {
+  let base = Math.floor(defeated.level * 25 + 30);
+  // 越階獎勵：打比自己高等的敵人 +30% EXP
+  if (myLevel != null && defeated.level > myLevel) {
+    base = Math.floor(base * 1.3);
+  }
+  return base;
 }
 
 export function applyExp(monster: MonsterInstance, exp: number): { leveled: boolean; newLevel: number; newSkills: string[]; realmUp: boolean } {
   if (monster.level >= 42) return { leveled: false, newLevel: monster.level, newSkills: [], realmUp: false };
 
   monster.exp += exp;
-  // 經驗曲線：前30級較快，後12級較慢
+  // 經驗曲線：前30級平穩成長，31+漸緩但不斷崖
   const expNeeded = monster.level <= 30
     ? monster.level * 20 + 10
-    : monster.level * 40;
+    : monster.level * 30;
 
   if (monster.exp >= expNeeded) {
     const oldLevel = monster.level;

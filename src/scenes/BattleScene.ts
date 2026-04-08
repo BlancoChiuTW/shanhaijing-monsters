@@ -839,7 +839,7 @@ export class BattleScene extends Phaser.Scene {
       y: this.enemySprite.y + 30,
       duration: 500,
       onComplete: () => {
-        let exp = getExpReward(this.enemyMonster);
+        let exp = getExpReward(this.enemyMonster, this.playerMonster.level);
 
         // 越階經驗加成：敵方境界每高一階 +75%
         const playerRealm = getCultivation(this.playerMonster.level).realmIndex;
@@ -1801,7 +1801,7 @@ export class BattleScene extends Phaser.Scene {
   /** 死鬥勝利：奪取對方靈寵，NPC消失 */
   private onDeathMatchVictory(): void {
     const state = getState();
-    const exp = getExpReward(this.enemyTeam[0]) * 2;
+    const exp = getExpReward(this.enemyTeam[0], getState().playerCombat.level) * 2;
     applyPlayerExp(Math.floor(exp * 0.5));
     recalcPlayerStats();
 
