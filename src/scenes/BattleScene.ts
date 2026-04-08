@@ -938,8 +938,8 @@ export class BattleScene extends Phaser.Scene {
           if (this.trainerId === 'boss') {
             const endingType = this.hasAbsorbedAllPets ? 'normal' : 'true';
             const winMsg = endingType === 'true'
-              ? '你以壓倒性的實力擊敗了冥王·幽羅！\n你與靈寵的羈絆就是最強的力量！'
-              : '你犧牲了所有靈寵的力量，最終擊倒了冥王·幽羅...\n但失去了所有夥伴的你，內心空蕩蕩的...';
+              ? '幽羅神魂潰散。\n【羈絆不是弱點。是變數。】'
+              : '冥王·幽羅倒下了。\n代價精確。預算之內。\n……拳握緊。空蕩蕩的。';
             this.showMessage(winMsg, () => {
               this.cameras.main.fadeOut(500, 0, 0, 0);
               this.time.delayedCall(550, () => {
@@ -1824,7 +1824,7 @@ export class BattleScene extends Phaser.Scene {
   /** 死鬥失敗：GAME OVER（Boss 戰 → Bad End） */
   private onDeathMatchGameOver(): void {
     if (this.isBoss) {
-      this.showMessage('你被冥王·幽羅徹底擊敗了...\n你的靈魂永遠沉淪於幽都之中...\n\nBAD END', () => {
+      this.showMessage('【……失策。】\n屬性崩潰警告：生命值 → 0。\n靈魂沉降……\n\nBAD END', () => {
         this.isAnimating = false;
         this.tweens.killAll();
         this.sound.stopAll();
@@ -1889,7 +1889,7 @@ export class BattleScene extends Phaser.Scene {
 
     const namesStr = petNames.join('、');
     this.showMessage(
-      `你決定犧牲所有靈寵的力量...\n${namesStr}化為光芒融入你的體內！\n\nHP+${gainHp} 攻+${gainAtk} 防+${gainDef} 速+${gainSpd}`,
+      `${namesStr}的神魂化作金光——無掙扎，無遲疑。\n【它信任我。這是它最後能給的東西。】\n\nHP+${gainHp} 攻+${gainAtk} 防+${gainDef} 速+${gainSpd}`,
       () => {
         this.updateInfoPanels();
         this.isAnimating = false;

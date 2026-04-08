@@ -20,39 +20,39 @@ export class IntroScene extends Phaser.Scene {
     // 劇情文字
     this.storyLines = [
       {
-        text: '太古之初，天地未分，混沌之中孕育萬靈...',
+        text: '太古紀元，混沌值：∞。\n天地未分，萬靈胚胎沉眠其中。',
         delay: 0,
-        style: { fontSize: '16px', color: '#667788', fontFamily: 'serif' },
+        style: { fontSize: '15px', color: '#667788', fontFamily: 'serif' },
       },
       {
-        text: '盤古開天，女媧造人，靈獸與人共居於世。',
+        text: '盤古斬開天地，女媧摶土造人。\n靈獸與人立下第一契約——共生協議，效力：永久。',
         delay: 0,
-        style: { fontSize: '16px', color: '#8899aa', fontFamily: 'serif' },
+        style: { fontSize: '14px', color: '#8899aa', fontFamily: 'serif' },
       },
       {
-        text: '《山海經》記載了四百餘種奇獸異靈——\n窮奇噬惡、畢方司火、鯤鵬化翼...',
+        text: '《山海經》存檔四百餘種靈獸數據：\n窮奇【噬惡係數S級】、畢方【火靈親和度99】、\n鯤鵬【形態解放需求：境界突破×3】……',
         delay: 0,
-        style: { fontSize: '15px', color: '#aabbcc', fontFamily: 'serif' },
+        style: { fontSize: '13px', color: '#aabbcc', fontFamily: 'serif' },
       },
       {
-        text: '然而千年之後，靈脈漸衰，靈獸與人之間的契約逐漸被遺忘。',
+        text: '千年侵蝕。靈脈衰退值每紀上升17%。\n契約鏈逐條斷裂，靈獸退化，人間遺忘。',
         delay: 0,
-        style: { fontSize: '15px', color: '#8899aa', fontFamily: 'serif' },
+        style: { fontSize: '14px', color: '#8899aa', fontFamily: 'serif' },
       },
       {
-        text: '直到——冥界之門再度開啟，\n幽羅冥王率眾魔侵入人間。',
+        text: '冥界封印：第九重破除。\n幽羅冥王降臨——初階討伐成功率：0.3%。',
         delay: 0,
-        style: { fontSize: '16px', color: '#ff6655', fontFamily: 'serif' },
+        style: { fontSize: '15px', color: '#ff6655', fontFamily: 'serif' },
       },
       {
-        text: '唯有重新喚醒山海之力，\n以靈獸師之名，踏上征途。',
+        text: '唯一解法：山海之力全解鎖。\n路徑：靈獸師主線，難度：地獄。',
         delay: 0,
-        style: { fontSize: '16px', color: '#ffcc44', fontFamily: 'serif' },
+        style: { fontSize: '15px', color: '#ffcc44', fontFamily: 'serif' },
       },
       {
-        text: '你，便是最後的靈獸師。',
+        text: '你，便是最後的靈獸師。\n\n【不。是第二次了。】',
         delay: 0,
-        style: { fontSize: '20px', color: '#ffffff', fontFamily: 'serif', fontStyle: 'bold' },
+        style: { fontSize: '18px', color: '#ffffff', fontFamily: 'serif', fontStyle: 'bold' },
       },
     ];
 
