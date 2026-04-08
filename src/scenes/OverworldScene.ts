@@ -9,7 +9,7 @@ const TILE_SIZE = 32;
 const TILE_KEYS = ['tile_grass', 'tile_wall', 'tile_tall_grass', 'tile_water', 'tile_exit', 'tile_path', 'tile_flower'];
 
 // 視口裁切用的 buffer（上下左右各多渲染幾格）
-const CULL_BUFFER = 3;
+const CULL_BUFFER = 5;
 
 export class OverworldScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Image;
@@ -36,6 +36,8 @@ export class OverworldScene extends Phaser.Scene {
   private poolSize = 0;
   private lastCullX = -999;
   private lastCullY = -999;
+  private lastCullX2 = -999;
+  private lastCullY2 = -999;
 
   // 寶物精靈
   private treasureSprites: Phaser.GameObjects.Container[] = [];
@@ -99,7 +101,7 @@ export class OverworldScene extends Phaser.Scene {
     this.tilePool.forEach(s => s.destroy());
     this.tilePool = [];
 
-    // 計算可見範圍：640/32/zoom=10 寬, 480/32/zoom=7.5 高，加 buffer
+    // 計算可見範圍：960/32/zoom=15 寬, 540/32/zoom=8.4 高，加 buffer
     const zoom = 2;
     const visW = Math.ceil(this.scale.width / TILE_SIZE / zoom) + CULL_BUFFER * 2 + 2;
     const visH = Math.ceil(this.scale.height / TILE_SIZE / zoom) + CULL_BUFFER * 2 + 2;
@@ -128,10 +130,13 @@ export class OverworldScene extends Phaser.Scene {
     const endX = Math.min(this.currentMap.width - 1, Math.ceil(camRight / TILE_SIZE) + CULL_BUFFER);
     const endY = Math.min(this.currentMap.height - 1, Math.ceil(camBottom / TILE_SIZE) + CULL_BUFFER);
 
-    // 早退：攝影機沒移動整格就跳過
-    if (startX === this.lastCullX && startY === this.lastCullY) return;
+    // 早退：可見範圍完全不變才跳過
+    if (startX === this.lastCullX && startY === this.lastCullY &&
+        endX === this.lastCullX2 && endY === this.lastCullY2) return;
     this.lastCullX = startX;
     this.lastCullY = startY;
+    this.lastCullX2 = endX;
+    this.lastCullY2 = endY;
 
     let poolIdx = 0;
 
