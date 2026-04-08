@@ -301,6 +301,9 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private interact(): void {
+    // 如果已在對話/選單中，不要重複觸發
+    if (this.dialogueBox) return;
+
     const dirs = [
       { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
       { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
@@ -320,20 +323,34 @@ export class OverworldScene extends Phaser.Scene {
   private talkToNpc(npc: MapNpc): void {
     const state = getState();
     let dialogueIndex = 0;
+    // 用於防止 setupInput 的 Z/Space/Enter 和對話 keydown 雙重觸發
+    let dialogueActive = false;
+    let currentCleanup: (() => void) | null = null;
 
     const showDialogue = () => {
+      // 先清理上一頁的事件
+      if (currentCleanup) {
+        currentCleanup();
+        currentCleanup = null;
+      }
+
       if (this.dialogueBox) {
         this.dialogueBox.destroy();
         this.dialogueBox = null;
       }
 
       if (dialogueIndex >= npc.dialogue.length) {
-        // 對話結束後執行功能
-        this.handleNpcAction(npc);
+        // 對話完全結束
+        dialogueActive = false;
         state.talkedNpcs.add(npc.id);
+        // 延遲一幀再執行 NPC 功能，確保 dialogueBox 狀態乾淨
+        this.time.delayedCall(50, () => {
+          this.handleNpcAction(npc);
+        });
         return;
       }
 
+      dialogueActive = true;
       const boxH = 80;
       const camW = this.scale.width;
       const camH = this.scale.height;
@@ -342,7 +359,7 @@ export class OverworldScene extends Phaser.Scene {
       const container = this.add.container(0, 0);
       container.setScrollFactor(0).setDepth(200);
 
-      // 對話框背景 — 高對比度
+      // 對話框背景
       const bg = this.add.rectangle(camW / 2, camH - boxH / 2 - 4, camW - 16, boxH, 0x0a0a1a, 0.95);
       bg.setStrokeStyle(2, 0xffcc44);
       container.add(bg);
@@ -352,7 +369,7 @@ export class OverworldScene extends Phaser.Scene {
       inner.setStrokeStyle(1, 0x334455);
       container.add(inner);
 
-      // NPC 頭像區域 (左側)
+      // NPC 頭像
       let npcSpriteKey = 'npc_default';
       if (npc.npcType === 'trainer') npcSpriteKey = 'npc_trainer';
       else if (npc.npcType === 'healer') npcSpriteKey = 'npc_healer';
@@ -362,7 +379,7 @@ export class OverworldScene extends Phaser.Scene {
       portrait.setDisplaySize(32, 32);
       container.add(portrait);
 
-      // NPC 名稱（頭像上方）
+      // NPC 名稱
       const nameLabel = this.add.text(12, camH - boxH - 10, npc.name, {
         fontSize: '11px', color: '#ffcc44', fontStyle: 'bold',
         backgroundColor: '#0a0a1a', padding: { x: 4, y: 1 },
@@ -390,10 +407,10 @@ export class OverworldScene extends Phaser.Scene {
 
       let charIdx = 0;
       let typewriterDone = false;
-      const typeSpeed = 25; // ms per char
+      let advancing = false; // 防止同一幀多次 advance
 
       const typeTimer = this.time.addEvent({
-        delay: typeSpeed,
+        delay: 25,
         repeat: fullText.length - 1,
         callback: () => {
           charIdx++;
@@ -405,64 +422,63 @@ export class OverworldScene extends Phaser.Scene {
         },
       });
 
-      // 推進提示 (打字完成後顯示)
-      let hintObj: Phaser.GameObjects.Text | null = null;
+      // 推進提示
       const showHint = () => {
-        const hintText = isLast ? '[Z/Space] 結束對話' : '[Z/Space] 繼續 >>';
+        if (!container.active) return;
+        const hintText = isLast ? '[Z / Space] 結束對話' : '[Z / Space] 繼續 >>';
         const hintColor = isLast ? '#88aacc' : '#ffcc44';
-        hintObj = this.add.text(camW - 16, camH - 12, hintText, {
+        const hint = this.add.text(camW - 16, camH - 12, hintText, {
           fontSize: '9px', color: hintColor,
         }).setOrigin(1, 0.5);
-        container.add(hintObj);
-
-        // 閃爍動畫
+        container.add(hint);
         this.tweens.add({
-          targets: hintObj,
-          alpha: 0.3,
-          duration: 500,
-          yoyo: true,
-          repeat: -1,
+          targets: hint, alpha: 0.3, duration: 500,
+          yoyo: true, repeat: -1,
         });
       };
 
       this.dialogueBox = container;
       dialogueIndex++;
 
-      // 推進邏輯
-      let advanceLocked = true; // 防止連按
-      this.time.delayedCall(80, () => { advanceLocked = false; });
-
+      // 推進邏輯 — 用 advancing flag 防止同一幀多次觸發
       const advance = () => {
-        if (advanceLocked) return;
+        if (advancing || !dialogueActive) return;
+
         if (!typewriterDone) {
           // 打字未完成 → 直接顯示全文
           typeTimer.remove();
+          charIdx = fullText.length;
           textObj.setText(fullText);
           typewriterDone = true;
           showHint();
-          advanceLocked = true;
-          this.time.delayedCall(150, () => { advanceLocked = false; });
+          // 短暫鎖定防止跳過
+          advancing = true;
+          this.time.delayedCall(200, () => { advancing = false; });
           return;
         }
-        // 移除所有監聽
-        cleanup();
+
+        advancing = true;
         showDialogue();
       };
 
+      // 使用 scene 級別的 keydown 事件（不用 addKey 避免和 setupInput 衝突）
       const onKey = (event: KeyboardEvent) => {
         if (event.code === 'KeyZ' || event.code === 'Space' || event.code === 'Enter') {
+          event.preventDefault();
           advance();
         }
       };
-
       const onPointer = () => advance();
 
-      // 綁定事件
-      this.input.keyboard?.on('keydown', onKey);
-      this.input.on('pointerdown', onPointer);
+      // 延遲綁定，避免開啟對話的那次按鍵同時觸發推進
+      this.time.delayedCall(100, () => {
+        if (!dialogueActive || !container.active) return;
+        window.addEventListener('keydown', onKey);
+        this.input.on('pointerdown', onPointer);
+      });
 
-      const cleanup = () => {
-        this.input.keyboard?.off('keydown', onKey);
+      currentCleanup = () => {
+        window.removeEventListener('keydown', onKey);
         this.input.off('pointerdown', onPointer);
       };
     };
