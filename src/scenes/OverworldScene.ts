@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { getMap, type GameMap, type MapNpc } from '../data/maps';
 import { getState, saveGame, getFirstAliveIndex, healTeam, addMonsterToTeam } from '../utils/gameState';
 import { createMonsterInstance, MONSTERS, getCultivation, fuseMonsters, type MonsterInstance } from '../data/monsters';
-import { healMonster } from '../utils/battle';
+import { healMonster, applyExp, getExpReward } from '../utils/battle';
 
 const TILE_SIZE = 32;
 
@@ -608,7 +608,7 @@ export class OverworldScene extends Phaser.Scene {
     const container = this.add.container(0, 0);
     container.setScrollFactor(0).setDepth(200);
 
-    const bg = this.add.rectangle(camW / 2, camH / 2, 220, 200, 0x0a0a1a, 0.95);
+    const bg = this.add.rectangle(camW / 2, camH / 2, 220, 230, 0x0a0a1a, 0.95);
     bg.setStrokeStyle(2, 0xffcc44);
     container.add(bg);
 
@@ -618,6 +618,7 @@ export class OverworldScene extends Phaser.Scene {
 
     const options = [
       { text: '📋 靈獸背包', action: () => this.showBackpack(container) },
+      { text: '🔥 練化（互吃）', action: () => this.showAbsorptionMenu(container) },
       { text: '📖 靈獸圖鑑', action: () => this.showPokedex(container) },
       { text: '♥ 回復全隊', action: () => { healTeam(); this.updateInfoText(); closeMenu(); this.showNotification('全隊已恢復！', 0x44ff88); } },
       { text: '💾 儲存遊戲', action: () => { saveGame(); closeMenu(); this.showNotification('遊戲已儲存！', 0x44aaff); } },
@@ -731,6 +732,171 @@ export class OverworldScene extends Phaser.Scene {
     container.add(closeBtn);
 
     this.dialogueBox = container;
+  }
+
+  // ═══════════════════════════════════
+  //  練化（靈獸互吃吸收經驗）
+  // ═══════════════════════════════════
+  private showAbsorptionMenu(parentContainer: Phaser.GameObjects.Container): void {
+    parentContainer.destroy();
+    this.dialogueBox = null;
+
+    const state = getState();
+    if (state.team.length + state.storage.length < 2) {
+      this.showNotification('需要至少兩隻靈獸才能練化！', 0xff4444);
+      return;
+    }
+
+    const camW = this.scale.width;
+    const camH = this.scale.height;
+    let selectedEater: number | null = null;
+    let selectedFood: number | null = null;
+
+    const allMonsters = [...state.team, ...state.storage];
+
+    const redraw = () => {
+      container.removeAll(true);
+
+      const bg = this.add.rectangle(camW / 2, camH / 2, camW - 10, camH - 10, 0x0a0a1a, 0.95);
+      bg.setStrokeStyle(2, 0xff6644);
+      container.add(bg);
+
+      container.add(this.add.text(camW / 2, 10, '— 練 化 —', {
+        fontSize: '13px', fontFamily: 'serif', color: '#ff6644',
+      }).setOrigin(0.5));
+      container.add(this.add.text(camW / 2, 26, '選擇吞噬者，再選祭品。祭品的累積經驗將被吸收。', {
+        fontSize: '7px', color: '#aabbcc', wordWrap: { width: camW - 40 },
+      }).setOrigin(0.5));
+
+      // 列出所有靈獸
+      allMonsters.forEach((m, i) => {
+        const isInTeam = i < state.team.length;
+        const y = 42 + i * 28;
+        const cult = getCultivation(m.level);
+
+        // 計算此靈獸累積的總經驗值
+        let totalExp = m.exp;
+        for (let lv = 1; lv < m.level; lv++) {
+          totalExp += lv <= 30 ? lv * 40 + 20 : lv * 80;
+        }
+
+        let label = `${m.nickname} ${cult.displayName}`;
+        if (!isInTeam) label = `[倉] ${label}`;
+
+        let color = '#ffffff';
+        if (selectedEater === i) color = '#ff6644';
+        else if (selectedFood === i) color = '#44ff44';
+
+        const sprite = this.add.image(18, y + 6, `monster_${m.templateId}`);
+        sprite.setDisplaySize(18, 18);
+        if (m.isShiny) sprite.setTint(0xffdd88);
+        container.add(sprite);
+
+        const nameText = this.add.text(32, y, label, {
+          fontSize: '9px', color, fontStyle: selectedEater === i || selectedFood === i ? 'bold' : 'normal',
+        }).setInteractive({ useHandCursor: true });
+
+        const expText = this.add.text(32, y + 12, `累積EXP: ${totalExp}`, {
+          fontSize: '7px', color: '#667788',
+        });
+
+        nameText.on('pointerdown', () => {
+          if (selectedEater === null) {
+            selectedEater = i;
+            redraw();
+          } else if (selectedEater === i) {
+            // 取消選擇
+            selectedEater = null;
+            selectedFood = null;
+            redraw();
+          } else {
+            selectedFood = i;
+            redraw();
+          }
+        });
+
+        container.add(nameText);
+        container.add(expText);
+
+        // 角色標記
+        if (selectedEater === i) {
+          container.add(this.add.text(camW - 30, y + 4, '吞', {
+            fontSize: '10px', color: '#ff6644', fontStyle: 'bold',
+          }));
+        } else if (selectedFood === i) {
+          container.add(this.add.text(camW - 30, y + 4, '祭', {
+            fontSize: '10px', color: '#44ff44', fontStyle: 'bold',
+          }));
+        }
+      });
+
+      // 確認按鈕
+      if (selectedEater !== null && selectedFood !== null) {
+        const eater = allMonsters[selectedEater];
+        const food = allMonsters[selectedFood];
+
+        // 計算祭品的累積經驗
+        let foodTotalExp = food.exp;
+        for (let lv = 1; lv < food.level; lv++) {
+          foodTotalExp += lv <= 30 ? lv * 40 + 20 : lv * 80;
+        }
+
+        const confirmBtn = this.add.text(camW / 2, camH - 35, `確認練化：${eater.nickname} 吞噬 ${food.nickname} (+${foodTotalExp} EXP)`, {
+          fontSize: '10px', color: '#ff6644', fontStyle: 'bold',
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+        confirmBtn.on('pointerover', () => confirmBtn.setColor('#ffcc44'));
+        confirmBtn.on('pointerout', () => confirmBtn.setColor('#ff6644'));
+        confirmBtn.on('pointerdown', () => {
+          // 餵經驗
+          let totalGained = foodTotalExp;
+          const results: string[] = [];
+          while (totalGained > 0 && eater.level < 42) {
+            const expNeeded = eater.level <= 30 ? eater.level * 40 + 20 : eater.level * 80;
+            const remaining = expNeeded - eater.exp;
+            if (totalGained >= remaining) {
+              totalGained -= remaining;
+              const result = applyExp(eater, remaining);
+              if (result.leveled) {
+                results.push(`${eater.nickname} 突破至 ${getCultivation(result.newLevel).displayName}！`);
+              }
+            } else {
+              eater.exp += totalGained;
+              totalGained = 0;
+            }
+          }
+
+          // 移除祭品
+          const foodIdx = selectedFood!;
+          if (foodIdx < state.team.length) {
+            state.team.splice(foodIdx, 1);
+          } else {
+            state.storage.splice(foodIdx - state.team.length, 1);
+          }
+
+          container.destroy();
+          this.dialogueBox = null;
+
+          const msg = results.length > 0
+            ? `練化成功！${results[results.length - 1]}`
+            : `練化成功！${eater.nickname} 獲得了 ${foodTotalExp} 經驗！`;
+          this.showNotification(msg, 0xff6644);
+        });
+        container.add(confirmBtn);
+      }
+
+      // 關閉按鈕
+      const closeBtn = this.add.text(camW / 2, camH - 14, '取消', {
+        fontSize: '11px', color: '#667788',
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
+      container.add(closeBtn);
+    };
+
+    const container = this.add.container(0, 0);
+    container.setScrollFactor(0).setDepth(200);
+    this.dialogueBox = container;
+    redraw();
   }
 
   private showMonsterDetail(parentContainer: Phaser.GameObjects.Container, m: MonsterInstance): void {
