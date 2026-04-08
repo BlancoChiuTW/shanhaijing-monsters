@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
+import { IntroScene } from './scenes/IntroScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
 import { OverworldScene } from './scenes/OverworldScene';
 import { BattleScene } from './scenes/BattleScene';
@@ -16,7 +17,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, MainMenuScene, OverworldScene, BattleScene, EndingScene],
+  scene: [BootScene, IntroScene, MainMenuScene, OverworldScene, BattleScene, EndingScene],
 };
 
 new Phaser.Game(config);

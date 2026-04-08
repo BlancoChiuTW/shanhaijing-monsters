@@ -1,4 +1,4 @@
-import { type MonsterInstance, type Skill, getTemplate, getTypeMultiplier, getStatStageMul, checkNewSkills, getBaseStats, calcStats } from '../data/monsters';
+import { type MonsterInstance, type Skill, type PlayerCombatStats, getTemplate, getTypeMultiplier, getStatStageMul, getRealmDamageMul, checkNewSkills, getBaseStats, calcStats, calcPlayerCombatStats } from '../data/monsters';
 
 export { calcStats };
 
@@ -25,8 +25,9 @@ export function calculateDamage(attacker: MonsterInstance, defender: MonsterInst
   const atkStat = attacker.atk * getStatStageMul(attacker.atkStage);
   const defStat = defender.def * getStatStageMul(defender.defStage);
 
+  const realmMul = getRealmDamageMul(attacker.level, defender.level);
   const baseDamage = ((2 * attacker.level / 5 + 2) * skill.power * (atkStat / defStat)) / 50 + 2;
-  const finalDamage = Math.max(1, Math.floor(baseDamage * typeMultiplier * stab * critMul * random));
+  const finalDamage = Math.max(1, Math.floor(baseDamage * typeMultiplier * stab * critMul * random * realmMul));
 
   let effectiveness = 'normal';
   let effMsg = '';
@@ -122,7 +123,7 @@ export function calculateCatchRate(monster: MonsterInstance): boolean {
 }
 
 export function getExpReward(defeated: MonsterInstance): number {
-  return Math.floor(defeated.level * 12 + 15);
+  return Math.floor(defeated.level * 25 + 30);
 }
 
 export function applyExp(monster: MonsterInstance, exp: number): { leveled: boolean; newLevel: number; newSkills: string[]; realmUp: boolean } {
@@ -131,8 +132,8 @@ export function applyExp(monster: MonsterInstance, exp: number): { leveled: bool
   monster.exp += exp;
   // 經驗曲線：前30級較快，後12級較慢
   const expNeeded = monster.level <= 30
-    ? monster.level * 40 + 20
-    : monster.level * 80;
+    ? monster.level * 20 + 10
+    : monster.level * 40;
 
   if (monster.exp >= expNeeded) {
     const oldLevel = monster.level;
@@ -186,4 +187,112 @@ export function resetStatStages(monster: MonsterInstance): void {
   monster.atkStage = 0;
   monster.defStage = 0;
   monster.spdStage = 0;
+}
+
+// ═══════════════════════════════════════
+//  人類戰鬥
+// ═══════════════════════════════════════
+
+export interface PlayerDamageResult {
+  damage: number;
+  message: string;
+  isCrit: boolean;
+}
+
+/** 人類攻擊靈獸或靈獸攻擊人類的傷害計算 */
+export function calculatePlayerDamage(
+  atkStat: number, atkStage: number, atkLevel: number, atkName: string,
+  defStat: number, defStage: number, defIsBlocking: boolean,
+  power: number, skillName: string,
+  defLevel?: number,
+): PlayerDamageResult {
+  const isCrit = Math.random() < 0.0625;
+  const critMul = isCrit ? 1.5 : 1.0;
+  const random = 0.85 + Math.random() * 0.15;
+  const atk = atkStat * getStatStageMul(atkStage);
+  const def = defStat * getStatStageMul(defStage);
+  const blockMul = defIsBlocking ? 0.5 : 1.0;
+  const realmMul = defLevel != null ? getRealmDamageMul(atkLevel, defLevel) : 1.0;
+
+  const baseDamage = ((2 * atkLevel / 5 + 2) * power * (atk / def)) / 50 + 2;
+  const finalDamage = Math.max(1, Math.floor(baseDamage * critMul * random * blockMul * realmMul));
+
+  const critMsg = isCrit ? '會心一擊！' : '';
+  const message = `${atkName} 使用了 ${skillName}！${critMsg} 造成 ${finalDamage} 點傷害！`;
+  return { damage: finalDamage, message, isCrit };
+}
+
+/** 生成NPC死鬥用人類屬性 */
+export function generateEnemyPlayerStats(enemyTeam: MonsterInstance[]): PlayerCombatStats {
+  const avgLevel = Math.floor(enemyTeam.reduce((s, m) => s + m.level, 0) / enemyTeam.length);
+  const stats = calcPlayerCombatStats(enemyTeam, { hp: 0, atk: 0, def: 0, spd: 0 }, avgLevel);
+  return {
+    level: avgLevel,
+    exp: 0,
+    hp: stats.maxHp,
+    maxHp: stats.maxHp,
+    atk: stats.atk,
+    def: stats.def,
+    spd: stats.spd,
+    atkStage: 0, defStage: 0, spdStage: 0,
+    refinedBonusHp: 0, refinedBonusAtk: 0,
+    refinedBonusDef: 0, refinedBonusSpd: 0,
+    isBlocking: false,
+  };
+}
+
+/** 最終 Boss 人類屬性：靈獸加總/6 * 1.3 */
+export function generateBossPlayerStats(enemyTeam: MonsterInstance[]): PlayerCombatStats {
+  const n = enemyTeam.length;
+  const sumHp = enemyTeam.reduce((s, m) => s + m.maxHp, 0);
+  const sumAtk = enemyTeam.reduce((s, m) => s + m.atk, 0);
+  const sumDef = enemyTeam.reduce((s, m) => s + m.def, 0);
+  const sumSpd = enemyTeam.reduce((s, m) => s + m.spd, 0);
+  const mul = 1.3;
+
+  const hp = Math.floor(sumHp / n * mul);
+  const atk = Math.floor(sumAtk / n * mul);
+  const def = Math.floor(sumDef / n * mul);
+  const spd = Math.floor(sumSpd / n * mul);
+
+  return {
+    level: 34, // 化神大圓滿
+    exp: 0,
+    hp, maxHp: hp,
+    atk, def, spd,
+    atkStage: 0, defStage: 0, spdStage: 0,
+    refinedBonusHp: 0, refinedBonusAtk: 0,
+    refinedBonusDef: 0, refinedBonusSpd: 0,
+    isBlocking: false,
+  };
+}
+
+/** 煉天大法：嘗試煉化敵方靈獸 */
+export function attemptRefinement(
+  enemy: MonsterInstance, playerCombat: PlayerCombatStats,
+): { success: boolean; gains: { hp: number; atk: number; def: number; spd: number } } {
+  const hpRatio = enemy.hp / enemy.maxHp;
+  if (hpRatio > 0.15) return { success: false, gains: { hp: 0, atk: 0, def: 0, spd: 0 } };
+
+  // 血量越低額外加成：15%→+0%, 1%→+14%
+  const hpPercent = Math.floor(hpRatio * 100);
+  const hpBonus = Math.max(0, 15 - hpPercent);
+  const rate = Math.max(10, Math.min(90, 50 + (playerCombat.level - enemy.level) * 2 + hpBonus));
+  const success = Math.random() * 100 < rate;
+
+  if (!success) return { success: false, gains: { hp: 0, atk: 0, def: 0, spd: 0 } };
+
+  const gains = {
+    hp: Math.max(1, Math.floor(enemy.maxHp * 0.05)),
+    atk: Math.max(1, Math.floor(enemy.atk * 0.05)),
+    def: Math.max(1, Math.floor(enemy.def * 0.05)),
+    spd: Math.max(1, Math.floor(enemy.spd * 0.05)),
+  };
+
+  playerCombat.refinedBonusHp += gains.hp;
+  playerCombat.refinedBonusAtk += gains.atk;
+  playerCombat.refinedBonusDef += gains.def;
+  playerCombat.refinedBonusSpd += gains.spd;
+
+  return { success, gains };
 }

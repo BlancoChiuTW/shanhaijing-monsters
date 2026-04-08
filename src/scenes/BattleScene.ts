@@ -1,25 +1,25 @@
 import Phaser from 'phaser';
-import { type MonsterInstance, type Skill, type Element, getTemplate, getStatStageMul, getCultivation } from '../data/monsters';
-import { calculateDamage, calculateCatchRate, getExpReward, applyExp, applyBuffSkill, enemyChooseAction, resetStatStages } from '../utils/battle';
-import { getState, addMonsterToTeam, getFirstAliveIndex } from '../utils/gameState';
+import { type MonsterInstance, type Skill, type Element, type CultivationMethod, type PlayerCombatStats, getTemplate, getStatStageMul, getCultivation, PLAYER_SKILLS, REFINE_PLAYER_SKILLS, MONSTERS, createTransformedInstance } from '../data/monsters';
+import { calculateDamage, calculateCatchRate, getExpReward, applyExp, applyBuffSkill, enemyChooseAction, resetStatStages, calculatePlayerDamage, attemptRefinement } from '../utils/battle';
+import { getState, addMonsterToTeam, getFirstAliveIndex, applyPlayerExp, recalcPlayerStats, addSeenMonster, isTeamFull } from '../utils/gameState';
 
 interface BattleData {
-  type: 'wild' | 'trainer';
+  type: 'wild' | 'trainer' | 'deathmatch';
   enemies: MonsterInstance[];
   trainerName?: string;
   trainerId?: string;
+  enemyPlayerStats?: PlayerCombatStats;
+  isBoss?: boolean;
   onEnd?: () => void;
 }
 
-// 屬性特效顏色
+// 五行特效顏色
 const ELEMENT_COLORS: Record<Element, number> = {
-  '風': 0x88ccff,
+  '金': 0xffdd44,
+  '木': 0x44cc44,
   '水': 0x3388dd,
   '火': 0xff4422,
-  '光': 0xffee44,
-  '幻': 0xcc66ff,
   '土': 0xaa8844,
-  '毒': 0x66cc22,
 };
 
 export class BattleScene extends Phaser.Scene {
@@ -28,10 +28,34 @@ export class BattleScene extends Phaser.Scene {
   private enemyMonster!: MonsterInstance;
   private enemyTeam: MonsterInstance[] = [];
   private enemyIndex = 0;
-  private battleType: 'wild' | 'trainer' = 'wild';
+  private battleType: 'wild' | 'trainer' | 'deathmatch' = 'wild';
   private trainerName = '';
   private trainerId = '';
   private onEnd?: () => void;
+
+  // 功法系統
+  private cultivationMethod: CultivationMethod = '御獸神訣';
+  /** 煉天大法：人類作為額外戰鬥實體 */
+  private isPlayerCombatant = false;
+  /** 萬靈化型變：變身取代靈寵 */
+  private isTransformed = false;
+  private transformedForm: MonsterInstance | null = null;
+
+  // 死鬥系統
+  private isDeathmatch = false;
+  private isBoss = false;
+  /** Normal End：玩家已煉化全部靈寵 */
+  private hasAbsorbedAllPets = false;
+  private playerCombat: PlayerCombatStats | null = null;
+  private enemyPlayerCombat: PlayerCombatStats | null = null;
+  /** 死鬥人類階段：寵全滅後人類上場 */
+  private playerIsHuman = false;
+  private enemyIsHuman = false;
+
+  // 煉天大法 UI（人類額外實體）
+  private playerHumanHpBar!: Phaser.GameObjects.Rectangle;
+  private playerHumanInfoText!: Phaser.GameObjects.Text;
+  private playerHumanSprite!: Phaser.GameObjects.Image;
 
   // UI elements
   private playerHpBar!: Phaser.GameObjects.Rectangle;
@@ -61,20 +85,62 @@ export class BattleScene extends Phaser.Scene {
     this.skillButtons = [];
 
     this.battleType = data.type;
+    this.isDeathmatch = data.type === 'deathmatch';
     this.enemyTeam = data.enemies;
     this.enemyIndex = 0;
     this.enemyMonster = this.enemyTeam[0];
     this.trainerName = data.trainerName || '';
     this.trainerId = data.trainerId || '';
+    this.isBoss = data.isBoss || false;
+    this.hasAbsorbedAllPets = false;
     this.onEnd = data.onEnd;
 
     // 重置所有能力等級
     for (const e of this.enemyTeam) resetStatStages(e);
 
     const state = getState();
+    this.cultivationMethod = state.cultivationMethod;
+
     this.playerMonsterIndex = getFirstAliveIndex();
     this.playerMonster = state.team[this.playerMonsterIndex];
     resetStatStages(this.playerMonster);
+
+    // 記錄看過的靈獸
+    for (const e of this.enemyTeam) addSeenMonster(e.templateId);
+
+    // 只有煉天大法才有額外人類實體
+    this.isPlayerCombatant = this.cultivationMethod === '煉天大法';
+
+    // 萬靈化型變：變身取代靈寵出戰
+    this.isTransformed = this.cultivationMethod === '萬靈化型變';
+    this.transformedForm = null;
+    if (this.isTransformed && state.seenMonsterIds.size > 0) {
+      const firstSeen = Array.from(state.seenMonsterIds)[0];
+      this.transformedForm = createTransformedInstance(firstSeen, state.playerCombat.level);
+      this.playerMonster = this.transformedForm;
+    }
+
+    // 死鬥：人類階段標記（寵物階段開始）
+    this.playerIsHuman = false;
+    this.enemyIsHuman = false;
+
+    // 煉天大法 or 死鬥：初始化人類屬性
+    if (this.isPlayerCombatant || this.isDeathmatch) {
+      this.playerCombat = state.playerCombat;
+      this.playerCombat.atkStage = 0;
+      this.playerCombat.defStage = 0;
+      this.playerCombat.spdStage = 0;
+      this.playerCombat.isBlocking = false;
+    } else {
+      this.playerCombat = null;
+    }
+
+    // 死鬥：敵方人類
+    if (this.isDeathmatch) {
+      this.enemyPlayerCombat = data.enemyPlayerStats || null;
+    } else {
+      this.enemyPlayerCombat = null;
+    }
   }
 
   create(): void {
@@ -120,11 +186,43 @@ export class BattleScene extends Phaser.Scene {
       fontSize: '13px', color: '#ffffff', wordWrap: { width: width - 50 },
     });
 
+    // 煉天大法：額外顯示人類實體
+    if (this.isPlayerCombatant && this.playerCombat) {
+      const phx = width * 0.12;
+      const phy = height * 0.62;
+      this.playerHumanSprite = this.add.image(phx, phy, 'player');
+      this.playerHumanSprite.setDisplaySize(50, 50);
+
+      this.add.rectangle(phx, phy - 35, 100, 30, 0x000000, 0.7).setStrokeStyle(1, 0x445566);
+      this.playerHumanInfoText = this.add.text(phx - 45, phy - 48, '', { fontSize: '9px', color: '#ffffff' });
+      this.add.rectangle(phx, phy - 22, 80, 6, 0x333333);
+      this.playerHumanHpBar = this.add.rectangle(phx - 40, phy - 22, 80, 6, 0x44cc44).setOrigin(0, 0.5);
+    }
+
     this.updateInfoPanels();
 
-    const introMsg = this.battleType === 'wild'
-      ? `野生的 ${this.enemyMonster.nickname} 出現了！`
-      : `${this.trainerName} 派出了 ${this.enemyMonster.nickname}！`;
+    // 播放戰鬥 BGM
+    if (!this.sound.get('bgm_battle')) {
+      this.sound.add('bgm_battle');
+    }
+    this.sound.stopAll();
+    this.sound.play('bgm_battle', { loop: true, volume: 0.4 });
+
+    let introMsg: string;
+    if (this.isDeathmatch) {
+      introMsg = `⚔ 死鬥！${this.trainerName} 發起死鬥挑戰！`;
+    } else if (this.battleType === 'wild') {
+      introMsg = `野生的 ${this.enemyMonster.nickname} 出現了！`;
+    } else {
+      introMsg = `${this.trainerName} 派出了 ${this.enemyMonster.nickname}！`;
+    }
+
+    if (this.isTransformed && this.transformedForm) {
+      introMsg += `\n你變身為 ${this.transformedForm.nickname}！(×1.1)`;
+    } else if (this.cultivationMethod === '煉天大法') {
+      introMsg += '\n煉天大法：你親自上場戰鬥！';
+    }
+
     this.showMessage(introMsg, () => this.showActions());
   }
 
@@ -136,22 +234,47 @@ export class BattleScene extends Phaser.Scene {
 
     const pShiny = this.playerMonster.isShiny ? '[異]' : '';
     const eShiny = this.enemyMonster.isShiny ? '[異]' : '';
+    const transformTag = this.isTransformed ? '[變身]' : '';
 
-    this.enemyInfoText.setText(
-      `${eShiny}${this.enemyMonster.nickname} ${eCult.displayName}\nHP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}${eStages}`
-    );
-    this.playerInfoText.setText(
-      `${pShiny}${this.playerMonster.nickname} ${pCult.displayName}\nHP:${this.playerMonster.hp}/${this.playerMonster.maxHp}${pStages}`
-    );
+    // 敵方顯示
+    if (this.enemyIsHuman && this.enemyPlayerCombat) {
+      this.enemyInfoText.setText(`${this.trainerName} Lv.${this.enemyPlayerCombat.level}\nHP:${this.enemyPlayerCombat.hp}/${this.enemyPlayerCombat.maxHp}`);
+    } else {
+      this.enemyInfoText.setText(
+        `${eShiny}${this.enemyMonster.nickname} ${eCult.displayName}\nHP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}${eStages}`
+      );
+    }
 
-    const enemyRatio = Math.max(0, this.enemyMonster.hp / this.enemyMonster.maxHp);
-    const playerRatio = Math.max(0, this.playerMonster.hp / this.playerMonster.maxHp);
+    // 玩家顯示
+    if (this.playerIsHuman && this.playerCombat) {
+      this.playerInfoText.setText(`靈獸師 Lv.${this.playerCombat.level}\nHP:${this.playerCombat.hp}/${this.playerCombat.maxHp}`);
+    } else {
+      this.playerInfoText.setText(
+        `${transformTag}${pShiny}${this.playerMonster.nickname} ${pCult.displayName}\nHP:${this.playerMonster.hp}/${this.playerMonster.maxHp}${pStages}`
+      );
+    }
+
+    // HP 條
+    const enemyRatio = (this.enemyIsHuman && this.enemyPlayerCombat)
+      ? Math.max(0, this.enemyPlayerCombat.hp / this.enemyPlayerCombat.maxHp)
+      : Math.max(0, this.enemyMonster.hp / this.enemyMonster.maxHp);
+    const playerRatio = (this.playerIsHuman && this.playerCombat)
+      ? Math.max(0, this.playerCombat.hp / this.playerCombat.maxHp)
+      : Math.max(0, this.playerMonster.hp / this.playerMonster.maxHp);
 
     this.tweens.add({ targets: this.enemyHpBar, displayWidth: Math.max(1, 160 * enemyRatio), duration: 300 });
     this.tweens.add({ targets: this.playerHpBar, displayWidth: Math.max(1, 160 * playerRatio), duration: 300 });
 
     this.enemyHpBar.fillColor = enemyRatio > 0.5 ? 0x44cc44 : enemyRatio > 0.2 ? 0xcccc44 : 0xcc4444;
     this.playerHpBar.fillColor = playerRatio > 0.5 ? 0x44cc44 : playerRatio > 0.2 ? 0xcccc44 : 0xcc4444;
+
+    // 煉天大法：更新人類 HP 條
+    if (this.isPlayerCombatant && this.playerCombat) {
+      this.playerHumanInfoText.setText(`靈獸師 Lv.${this.playerCombat.level}\nHP:${this.playerCombat.hp}/${this.playerCombat.maxHp}`);
+      const phRatio = Math.max(0, this.playerCombat.hp / this.playerCombat.maxHp);
+      this.tweens.add({ targets: this.playerHumanHpBar, displayWidth: Math.max(1, 80 * phRatio), duration: 300 });
+      this.playerHumanHpBar.fillColor = phRatio > 0.5 ? 0x44cc44 : phRatio > 0.2 ? 0xcccc44 : 0xcc4444;
+    }
   }
 
   private formatStages(m: MonsterInstance): string {
@@ -183,35 +306,53 @@ export class BattleScene extends Phaser.Scene {
   private showActions(): void {
     if (this.isAnimating) return;
     this.clearButtons();
+
+    // 煉天大法：人+寵雙實體選擇
+    if (this.isPlayerCombatant) {
+      this.showCombatantChoice();
+      return;
+    }
+
+    // 死鬥人類階段：顯示人類技能
+    if (this.playerIsHuman) {
+      this.showHumanPhaseSkills();
+      return;
+    }
+
     this.messageText.setText('選擇行動：');
 
     const { width, height } = this.scale;
     const actions: { icon: string; text: string; action: () => void }[] = [
       { icon: 'icon_skill', text: '技能', action: () => this.showSkills() },
-      { icon: 'icon_swap', text: '換獸', action: () => this.showSwitchMenu() },
     ];
+
+    // 萬靈化型變：永遠可以變化＋換獸
+    if (this.cultivationMethod === '萬靈化型變') {
+      actions.push({ icon: 'icon_swap', text: '變化', action: () => this.showTransformSelect() });
+      actions.push({ icon: 'icon_swap', text: '換獸', action: () => this.isTransformed ? this.showTransformSwitchMenu() : this.showSwitchMenu() });
+    } else {
+      actions.push({ icon: 'icon_swap', text: '換獸', action: () => this.showSwitchMenu() });
+    }
 
     if (this.battleType === 'wild') {
       actions.push({ icon: 'icon_capture', text: '捕獲', action: () => this.tryCatch() });
       actions.push({ icon: 'icon_run', text: '逃跑', action: () => this.tryRun() });
-    } else {
+    } else if (!this.isBoss) {
       actions.push({ icon: 'icon_run', text: '認輸', action: () => this.tryRun() });
     }
 
     actions.forEach((act, i) => {
       const x = width / 2 - 120 + (i % 2) * 160;
       const y = height - 65 + Math.floor(i / 2) * 28;
-      // 圖示
       const icon = this.add.image(x, y + 8, act.icon);
       icon.setDisplaySize(16, 16).setOrigin(0, 0.5);
       this.actionButtons.push(icon);
-      // 文字
       const btn = this.add.text(x + 20, y, act.text, {
         fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
       }).setInteractive({ useHandCursor: true });
-      btn.on('pointerover', () => { btn.setColor('#ffcc44'); icon.setTint(0xffcc44); });
+      btn.on('pointerover', () => { btn.setColor('#ffcc44'); icon.setTint(0xffcc44); this.playSfx('sfx_cursor', 0.3); });
       btn.on('pointerout', () => { btn.setColor('#ffffff'); icon.clearTint(); });
-      btn.on('pointerdown', act.action);
+      btn.on('pointerdown', () => { this.playSfx('sfx_select'); act.action(); });
       icon.setInteractive({ useHandCursor: true });
       icon.on('pointerdown', act.action);
       this.actionButtons.push(btn);
@@ -270,6 +411,10 @@ export class BattleScene extends Phaser.Scene {
   private playSkillVfx(skill: Skill, targetX: number, targetY: number, onDone: () => void): void {
     const color = ELEMENT_COLORS[skill.element];
 
+    // 疊加 VFX 圖片特效
+    const vfxIdx = Math.floor(Math.random() * 6);
+    this.playVfxSprite(`vfx_impact_${vfxIdx}`, targetX, targetY, 2);
+
     switch (skill.element) {
       case '火': {
         for (let i = 0; i < 10; i++) {
@@ -307,7 +452,10 @@ export class BattleScene extends Phaser.Scene {
         this.time.delayedCall(500, onDone);
         break;
       }
-      case '風': {
+      case '金': {
+        // 金光斬擊 + 光束
+        this.playVfxSprite(`vfx_star_${Math.floor(Math.random() * 6)}`, targetX, targetY - 20, 2);
+        this.playVfxSprite(`vfx_light_${Math.floor(Math.random() * 6)}`, targetX, targetY, 2);
         for (let i = 0; i < 8; i++) {
           const slash = this.add.rectangle(targetX, targetY, 35, 3, color, 0.7).setDepth(50);
           slash.setAngle(i * 22.5);
@@ -318,41 +466,35 @@ export class BattleScene extends Phaser.Scene {
             onComplete: () => slash.destroy(),
           });
         }
-        this.time.delayedCall(550, onDone);
-        break;
-      }
-      case '光': {
         const beam = this.add.rectangle(targetX, targetY - 120, 24, 240, color, 0.6).setDepth(50);
         this.tweens.add({
           targets: beam, y: targetY, alpha: 0.95,
           duration: 200, yoyo: true, hold: 200,
           onComplete: () => { beam.destroy(); onDone(); },
         });
-        for (let i = 0; i < 8; i++) {
-          const p = this.add.circle(
-            targetX + (Math.random() - 0.5) * 40,
-            targetY + (Math.random() - 0.5) * 40,
-            2 + Math.random() * 3, 0xffffff, 0.9,
-          ).setDepth(51);
-          this.tweens.add({
-            targets: p, y: p.y - 50, alpha: 0,
-            duration: 600, delay: 100 + i * 40,
-            onComplete: () => p.destroy(),
-          });
-        }
         break;
       }
-      case '幻': {
-        for (let i = 0; i < 4; i++) {
-          const ring = this.add.circle(targetX, targetY, 10 + i * 14, color, 0).setDepth(50);
-          ring.setStrokeStyle(2, color);
+      case '木': {
+        // 藤蔓/自然 VFX
+        this.playVfxSprite(`vfx_arcane_${Math.floor(Math.random() * 6)}`, targetX, targetY, 2.5);
+        this.playVfxSprite(`vfx_grow_${Math.floor(Math.random() * 6)}`, targetX, targetY, 2);
+        for (let i = 0; i < 10; i++) {
+          const leaf = this.add.circle(
+            targetX + (Math.random() - 0.5) * 40,
+            targetY + (Math.random() - 0.5) * 40,
+            4 + Math.random() * 6, color, 0.7,
+          ).setDepth(50);
           this.tweens.add({
-            targets: ring, scale: 2.5, alpha: 0,
-            duration: 500, delay: i * 100,
-            onComplete: () => ring.destroy(),
+            targets: leaf,
+            scale: 1.5 + Math.random(),
+            alpha: 0,
+            x: leaf.x + (Math.random() - 0.5) * 50,
+            y: leaf.y - Math.random() * 35,
+            duration: 600, delay: i * 45,
+            onComplete: () => leaf.destroy(),
           });
         }
-        this.time.delayedCall(650, onDone);
+        this.time.delayedCall(700, onDone);
         break;
       }
       case '土': {
@@ -372,26 +514,6 @@ export class BattleScene extends Phaser.Scene {
           });
         }
         this.time.delayedCall(550, onDone);
-        break;
-      }
-      case '毒': {
-        for (let i = 0; i < 10; i++) {
-          const bubble = this.add.circle(
-            targetX + (Math.random() - 0.5) * 40,
-            targetY + (Math.random() - 0.5) * 40,
-            4 + Math.random() * 10, color, 0.5,
-          ).setDepth(50);
-          this.tweens.add({
-            targets: bubble,
-            scale: 1.8 + Math.random(),
-            alpha: 0,
-            x: bubble.x + (Math.random() - 0.5) * 50,
-            y: bubble.y - Math.random() * 35,
-            duration: 600, delay: i * 45,
-            onComplete: () => bubble.destroy(),
-          });
-        }
-        this.time.delayedCall(700, onDone);
         break;
       }
       default:
@@ -422,6 +544,8 @@ export class BattleScene extends Phaser.Scene {
 
   /** 回復特效 */
   private playHealVfx(targetX: number, targetY: number): void {
+    // 成長光環 VFX
+    this.playVfxSprite(`vfx_grow_${Math.floor(Math.random() * 6)}`, targetX, targetY, 2);
     for (let i = 0; i < 8; i++) {
       const sparkle = this.add.circle(
         targetX + (Math.random() - 0.5) * 50,
@@ -483,6 +607,12 @@ export class BattleScene extends Phaser.Scene {
     const playerSkill = this.playerMonster.skills[skillIndex];
     playerSkill.currentPp--;
 
+    // 敵方是人類（死鬥人類階段）：使用 calculatePlayerDamage
+    if (this.enemyIsHuman && this.enemyPlayerCombat) {
+      this.doPetVsHumanTurn(playerSkill.skill);
+      return;
+    }
+
     const enemySkillIndex = enemyChooseAction(this.enemyMonster);
     const enemySkill = this.enemyMonster.skills[enemySkillIndex];
 
@@ -513,6 +643,71 @@ export class BattleScene extends Phaser.Scene {
         });
       });
     }
+  }
+
+  /** 寵物/變身 攻擊敵方人類（死鬥人類階段） */
+  private doPetVsHumanTurn(skill: Skill): void {
+    const epc = this.enemyPlayerCombat!;
+
+    if (Math.random() * 100 > skill.accuracy) {
+      this.showMessage(`${this.playerMonster.nickname} 的 ${skill.name} 沒有命中！`, () => {
+        this.doEnemyHumanRetaliation();
+      });
+      return;
+    }
+
+    if (skill.power === 0) {
+      // 輔助技能對人類無效，跳過
+      this.showMessage(`${this.playerMonster.nickname} 使用了 ${skill.name}！但對人類無效...`, () => {
+        this.doEnemyHumanRetaliation();
+      });
+      return;
+    }
+
+    const result = calculatePlayerDamage(
+      this.playerMonster.atk, this.playerMonster.atkStage, this.playerMonster.level, this.playerMonster.nickname,
+      epc.def, epc.defStage, epc.isBlocking,
+      skill.power, skill.name, epc.level,
+    );
+    epc.hp = Math.max(0, epc.hp - result.damage);
+    epc.isBlocking = false;
+    this.updateInfoPanels();
+
+    this.showMessage(result.message, () => {
+      if (epc.hp <= 0) {
+        this.onDeathMatchVictory();
+        return;
+      }
+      this.doEnemyHumanRetaliation();
+    });
+  }
+
+  /** 敵方人類反擊玩家 */
+  private doEnemyHumanRetaliation(): void {
+    const epc = this.enemyPlayerCombat!;
+    const atkSkill = Math.random() < 0.6 ? PLAYER_SKILLS[0] : PLAYER_SKILLS[1];
+
+    if (Math.random() * 100 > atkSkill.accuracy) {
+      this.showMessage(`${this.trainerName} 的 ${atkSkill.name} 沒有命中！`, () => {
+        this.isAnimating = false;
+        this.showActions();
+      });
+      return;
+    }
+
+    const result = calculatePlayerDamage(
+      epc.atk, epc.atkStage, epc.level, this.trainerName,
+      this.playerMonster.def, this.playerMonster.defStage, false,
+      atkSkill.power, atkSkill.name, this.playerMonster.level,
+    );
+    this.playerMonster.hp = Math.max(0, this.playerMonster.hp - result.damage);
+    this.updateInfoPanels();
+
+    this.showMessage(result.message, () => {
+      if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
+      this.isAnimating = false;
+      this.showActions();
+    });
   }
 
   /** 統一處理攻擊/輔助技能 */
@@ -644,10 +839,26 @@ export class BattleScene extends Phaser.Scene {
       y: this.enemySprite.y + 30,
       duration: 500,
       onComplete: () => {
-        const exp = getExpReward(this.enemyMonster);
+        let exp = getExpReward(this.enemyMonster);
+
+        // 越階經驗加成：敵方境界每高一階 +75%
+        const playerRealm = getCultivation(this.playerMonster.level).realmIndex;
+        const enemyRealm = getCultivation(this.enemyMonster.level).realmIndex;
+        const realmDiff = enemyRealm - playerRealm;
+        if (realmDiff > 0) {
+          exp = Math.floor(exp * (1 + realmDiff * 0.75));
+        }
+
         const levelResult = applyExp(this.playerMonster, exp);
 
+        // 人類也獲得經驗
+        const playerLvResult = applyPlayerExp(Math.floor(exp * 0.5));
+        recalcPlayerStats();
+
         let msg = `${this.enemyMonster.nickname} 被打倒了！獲得 ${exp} 經驗值。`;
+        if (realmDiff > 0) {
+          msg += `（越階加成 +${realmDiff * 75}%）`;
+        }
         if (levelResult.leveled) {
           const newCult = getCultivation(levelResult.newLevel);
           msg += `\n${this.playerMonster.nickname} 突破至 ${newCult.displayName}！`;
@@ -658,10 +869,53 @@ export class BattleScene extends Phaser.Scene {
             msg += `\n學會了新技能：${levelResult.newSkills.join('、')}！`;
           }
         }
+        if (playerLvResult.leveled) {
+          msg += `\n靈獸師突破至 Lv.${playerLvResult.newLevel}！`;
+        }
 
         this.showMessage(msg, () => {
           this.updateInfoPanels();
 
+          // 死鬥模式
+          if (this.isDeathmatch) {
+            // 敵方人類已上場且被打倒 → 勝利
+            if (this.enemyIsHuman) {
+              this.onDeathMatchVictory();
+              return;
+            }
+            // 找下一隻存活的敵寵
+            let nextAlive = -1;
+            for (let i = 0; i < this.enemyTeam.length; i++) {
+              if (this.enemyTeam[i].hp > 0) { nextAlive = i; break; }
+            }
+            if (nextAlive >= 0) {
+              this.enemyIndex = nextAlive;
+              this.enemyMonster = this.enemyTeam[this.enemyIndex];
+              this.enemySprite.setTexture(`monster_${this.enemyMonster.templateId}`);
+              this.enemySprite.setAlpha(1);
+              this.enemySprite.setPosition(this.enemySpriteOriginX, this.enemySpriteOriginY);
+              this.updateInfoPanels();
+              this.showMessage(`對手派出了 ${this.enemyMonster.nickname}！`, () => {
+                this.isAnimating = false;
+                this.showActions();
+              });
+            } else {
+              // 敵方靈寵全滅 → 敵方人類上場
+              this.enemyIsHuman = true;
+              this.enemySprite.setTexture('npc_trainer');
+              this.enemySprite.setAlpha(1);
+              this.enemySprite.setPosition(this.enemySpriteOriginX, this.enemySpriteOriginY);
+              this.enemySprite.setDisplaySize(100, 100);
+              this.updateInfoPanels();
+              this.showMessage(`${this.trainerName} 的靈寵全滅了！${this.trainerName}親自上場！`, () => {
+                this.isAnimating = false;
+                this.showActions();
+              });
+            }
+            return;
+          }
+
+          // 普通/訓練家戰鬥
           this.enemyIndex++;
           if (this.enemyIndex < this.enemyTeam.length) {
             this.enemyMonster = this.enemyTeam[this.enemyIndex];
@@ -682,12 +936,16 @@ export class BattleScene extends Phaser.Scene {
 
           // 擊敗最終BOSS → 結局畫面
           if (this.trainerId === 'boss') {
-            this.showMessage('你擊敗了冥王·幽羅！成為最強的靈獸師！', () => {
+            const endingType = this.hasAbsorbedAllPets ? 'normal' : 'true';
+            const winMsg = endingType === 'true'
+              ? '你以壓倒性的實力擊敗了冥王·幽羅！\n你與靈寵的羈絆就是最強的力量！'
+              : '你犧牲了所有靈寵的力量，最終擊倒了冥王·幽羅...\n但失去了所有夥伴的你，內心空蕩蕩的...';
+            this.showMessage(winMsg, () => {
               this.cameras.main.fadeOut(500, 0, 0, 0);
               this.time.delayedCall(550, () => {
                 this.scene.stop();
                 this.scene.stop('Overworld');
-                this.scene.start('Ending');
+                this.scene.start('Ending', { endingType });
               });
             });
             return;
@@ -702,9 +960,70 @@ export class BattleScene extends Phaser.Scene {
   private onPlayerMonsterDefeated(): void {
     this.showMessage(`${this.playerMonster.nickname} 倒下了！`, () => {
       const state = getState();
+
+      // 萬靈化型變：變身被打倒 → 解除變身，看包包有沒有活的寵
+      if (this.isTransformed) {
+        this.isTransformed = false;
+        this.transformedForm = null;
+        const nextAliveIdx = getFirstAliveIndex();
+        if (nextAliveIdx >= 0) {
+          // 有活的寵，切換出場
+          this.playerMonsterIndex = nextAliveIdx;
+          this.playerMonster = state.team[nextAliveIdx];
+          resetStatStages(this.playerMonster);
+          this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
+          this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
+          this.updateInfoPanels();
+          this.showMessage(`變身被擊破了！派出 ${this.playerMonster.nickname}！`, () => {
+            this.isAnimating = false;
+            this.showActions();
+          });
+          return;
+        }
+        // 無活寵 → 戰敗
+        this.showMessage('變身被擊破了，靈寵也全滅了...回到起點休息。', () => {
+          state.team.forEach(m => {
+            m.hp = m.maxHp;
+            m.atkStage = 0; m.defStage = 0; m.spdStage = 0;
+            m.skills.forEach(s => { s.currentPp = s.skill.pp; });
+          });
+          state.currentMapId = 'qingqiu';
+          state.playerX = 3;
+          state.playerY = 3;
+          this.endBattle();
+        });
+        return;
+      }
+
+      // 死鬥人類階段：人類被打倒 = GAME OVER
+      if (this.playerIsHuman) {
+        this.onDeathMatchGameOver();
+        return;
+      }
+
       const nextAlive = getFirstAliveIndex();
 
       if (nextAlive === -1) {
+        // 煉天大法：寵全滅 → 判定
+        if (this.isPlayerCombatant) {
+          this.checkCombatantEnd();
+          return;
+        }
+        // 死鬥：寵全滅 → 玩家人類上場
+        if (this.isDeathmatch && this.playerCombat) {
+          this.playerIsHuman = true;
+          this.playerSprite.setTexture('player');
+          this.playerSprite.setAlpha(1);
+          this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
+          this.playerSprite.setDisplaySize(120, 120);
+          this.updateInfoPanels();
+          this.showMessage('你的靈寵全滅了！你親自上場戰鬥！', () => {
+            this.isAnimating = false;
+            this.showActions();
+          });
+          return;
+        }
+        // 普通戰鬥：寵全滅
         this.showMessage('所有靈獸都倒下了...回到起點休息。', () => {
           state.team.forEach(m => {
             m.hp = m.maxHp;
@@ -727,6 +1046,7 @@ export class BattleScene extends Phaser.Scene {
       this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
       this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
       this.updateInfoPanels();
+
       this.showMessage(`換上了 ${this.playerMonster.nickname}！`, () => {
         this.isAnimating = false;
         this.showActions();
@@ -737,6 +1057,15 @@ export class BattleScene extends Phaser.Scene {
   private tryCatch(): void {
     this.isAnimating = true;
     this.clearButtons();
+
+    // 隊伍已滿6隻：不能捕獲
+    if (isTeamFull()) {
+      this.showMessage('隊伍已滿（上限6隻），無法捕獲更多靈獸！', () => {
+        this.isAnimating = false;
+        this.showActions();
+      });
+      return;
+    }
 
     this.showMessage('投出靈符...', () => {
       this.tweens.add({
@@ -754,9 +1083,9 @@ export class BattleScene extends Phaser.Scene {
               targets: this.enemySprite,
               scale: 0, alpha: 0, duration: 400,
               onComplete: () => {
-                const inTeam = addMonsterToTeam(this.enemyMonster);
+                const where = addMonsterToTeam(this.enemyMonster);
                 const msg = `成功捕獲了 ${this.enemyMonster.nickname}！` +
-                  (inTeam ? '' : '\n隊伍已滿，已放入倉庫。');
+                  (where === 'team' ? '' : '\n隊伍已滿，已放入倉庫。');
                 this.showMessage(msg, () => {
                   const state = getState();
                   if (state.caughtIds.size >= 10) {
@@ -787,6 +1116,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private tryRun(): void {
+    this.isAnimating = true;
     this.clearButtons();
     if (this.battleType === 'wild') {
       const success = Math.random() < 0.7;
@@ -804,6 +1134,8 @@ export class BattleScene extends Phaser.Scene {
           });
         });
       }
+    } else if (this.isDeathmatch) {
+      this.showMessage('你選擇棄權撤退，認輸了...', () => this.endBattle());
     } else {
       this.showMessage('你認輸了...', () => this.endBattle());
     }
@@ -828,6 +1160,7 @@ export class BattleScene extends Phaser.Scene {
         btn.on('pointerover', () => btn.setColor('#ffcc44'));
         btn.on('pointerout', () => btn.setColor(color));
         btn.on('pointerdown', () => {
+          this.isAnimating = true;
           this.playerMonsterIndex = i;
           this.playerMonster = m;
           resetStatStages(this.playerMonster);
@@ -836,14 +1169,18 @@ export class BattleScene extends Phaser.Scene {
           this.updateInfoPanels();
           this.clearButtons();
           this.showMessage(`換上了 ${m.nickname}！`, () => {
-            const enemySkillIndex = enemyChooseAction(this.enemyMonster);
-            const enemySkill = this.enemyMonster.skills[enemySkillIndex];
-            enemySkill.currentPp--;
-            this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
-              if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
-              this.isAnimating = false;
-              this.showActions();
-            });
+            if (this.isPlayerCombatant) {
+              this.executeEnemyCombatantTurn();
+            } else {
+              const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+              const enemySkill = this.enemyMonster.skills[enemySkillIndex];
+              enemySkill.currentPp--;
+              this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+                if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
+                this.isAnimating = false;
+                this.showActions();
+              });
+            }
           });
         });
       }
@@ -872,22 +1209,28 @@ export class BattleScene extends Phaser.Scene {
     const sizeBonus = ri * 5; // 每個境界+5px
     sprite.setDisplaySize(baseSize + sizeBonus, baseSize + sizeBonus);
 
-    // 境界 >= 2 (金丹)：添加光環
+    // 境界 >= 2 (金丹)：添加靈氣光環
     if (ri >= 2) {
       const auraColor = parseInt(cult.color.replace('#', ''), 16);
-      const aura = this.add.circle(sprite.x, sprite.y, (baseSize + sizeBonus) / 2 + 8, auraColor, 0.1);
-      aura.setStrokeStyle(1, auraColor);
-      aura.setDepth(sprite.depth - 1);
-
-      // 脈動動畫
-      this.tweens.add({
-        targets: aura,
-        scale: 1.15,
-        alpha: 0.05,
-        duration: 1500,
-        yoyo: true,
-        repeat: -1,
-      });
+      // 嘗試使用 VFX 靈氣圖片
+      const auraKey = `vfx_aura_${Math.min(ri, 5)}`;
+      if (this.textures.exists(auraKey)) {
+        const auraImg = this.add.image(sprite.x, sprite.y, auraKey)
+          .setDisplaySize((baseSize + sizeBonus) + 20, (baseSize + sizeBonus) + 20)
+          .setAlpha(0.3).setTint(auraColor).setDepth(sprite.depth - 1);
+        this.tweens.add({
+          targets: auraImg, scale: 1.1, alpha: 0.15,
+          duration: 1500, yoyo: true, repeat: -1,
+        });
+      } else {
+        const aura = this.add.circle(sprite.x, sprite.y, (baseSize + sizeBonus) / 2 + 8, auraColor, 0.1);
+        aura.setStrokeStyle(1, auraColor);
+        aura.setDepth(sprite.depth - 1);
+        this.tweens.add({
+          targets: aura, scale: 1.15, alpha: 0.05,
+          duration: 1500, yoyo: true, repeat: -1,
+        });
+      }
     }
 
     // 境界 >= 4 (化神)：粒子效果
@@ -916,6 +1259,754 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  /** 播放 VFX 圖片特效 */
+  private playVfxSprite(key: string, x: number, y: number, scale = 1.5): void {
+    if (!this.textures.exists(key)) return;
+    const img = this.add.image(x, y, key).setDepth(55).setScale(scale).setAlpha(0.9);
+    this.tweens.add({
+      targets: img,
+      alpha: 0,
+      scale: scale * 2,
+      duration: 450,
+      onComplete: () => img.destroy(),
+    });
+  }
+
+  /** 播放 UI 音效 */
+  private playSfx(key: string, volume = 0.5): void {
+    if (this.cache.audio.exists(key)) {
+      this.sound.play(key, { volume });
+    }
+  }
+
+  // ═══════════════════════════════════════
+  //  煉天大法：人+寵雙實體系統
+  // ═══════════════════════════════════════
+
+  private showCombatantChoice(): void {
+    this.clearButtons();
+    this.messageText.setText('選擇行動 — 選擇誰行動：');
+
+    const { width, height } = this.scale;
+
+    const petBtn = this.add.text(width / 2 - 80, height - 65, '【靈寵行動】', {
+      fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
+    }).setInteractive({ useHandCursor: true });
+    petBtn.on('pointerover', () => petBtn.setColor('#ffcc44'));
+    petBtn.on('pointerout', () => petBtn.setColor('#ffffff'));
+    petBtn.on('pointerdown', () => this.showCombatantPetActions());
+    this.actionButtons.push(petBtn);
+
+    const humanBtn = this.add.text(width / 2 + 20, height - 65, '【人類行動】', {
+      fontSize: '14px', color: '#ff8844', fontStyle: 'bold',
+    }).setInteractive({ useHandCursor: true });
+    humanBtn.on('pointerover', () => humanBtn.setColor('#ffcc44'));
+    humanBtn.on('pointerout', () => humanBtn.setColor('#ff8844'));
+    humanBtn.on('pointerdown', () => this.showPlayerSkills());
+    this.actionButtons.push(humanBtn);
+  }
+
+  private showCombatantPetActions(): void {
+    this.clearButtons();
+    this.messageText.setText('靈寵行動：');
+
+    const { width, height } = this.scale;
+    const actions: { text: string; action: () => void }[] = [
+      { text: '技能', action: () => this.showSkills() },
+      { text: '換獸', action: () => this.showSwitchMenu() },
+    ];
+    if (this.battleType === 'wild') {
+      actions.push({ text: '捕獲', action: () => this.tryCatch() });
+    }
+
+    actions.forEach((act, i) => {
+      const x = width / 2 - 80 + i * 80;
+      const y = height - 60;
+      const btn = this.add.text(x, y, act.text, {
+        fontSize: '13px', color: '#ffffff',
+      }).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setColor('#ffcc44'));
+      btn.on('pointerout', () => btn.setColor('#ffffff'));
+      btn.on('pointerdown', act.action);
+      this.actionButtons.push(btn);
+    });
+
+    const back = this.add.text(width / 2, height - 15, '[返回]', {
+      fontSize: '11px', color: '#889999',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    back.on('pointerdown', () => this.showCombatantChoice());
+    this.actionButtons.push(back);
+  }
+
+  /** 煉天大法人類技能 */
+  private showPlayerSkills(): void {
+    this.clearButtons();
+    this.messageText.setText('人類技能：');
+
+    const { width, height } = this.scale;
+
+    REFINE_PLAYER_SKILLS.forEach((skill, i) => {
+      const x = width / 2 - 120 + (i % 2) * 160;
+      const y = height - 68 + Math.floor(i / 2) * 26;
+
+      let enabled = true;
+      if (skill.type === 'refine') {
+        enabled = this.enemyMonster.hp > 0 && this.enemyMonster.hp / this.enemyMonster.maxHp < 0.15;
+      }
+
+      const color = enabled ? '#ff8844' : '#555555';
+      const btn = this.add.text(x, y, `${skill.name}(${skill.description})`, {
+        fontSize: '11px', color,
+      }).setInteractive({ useHandCursor: true });
+
+      if (enabled) {
+        btn.on('pointerover', () => btn.setColor('#ffcc44'));
+        btn.on('pointerout', () => btn.setColor('#ff8844'));
+        btn.on('pointerdown', () => this.executePlayerAction(i));
+      }
+      this.skillButtons.push(btn);
+    });
+
+    const back = this.add.text(width / 2, height - 15, '[返回]', {
+      fontSize: '11px', color: '#889999',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    back.on('pointerdown', () => this.showCombatantChoice());
+    this.skillButtons.push(back);
+  }
+
+  private executePlayerAction(skillIndex: number): void {
+    if (!this.playerCombat) return;
+    const skill = REFINE_PLAYER_SKILLS[skillIndex];
+    this.isAnimating = true;
+    this.clearButtons();
+
+    if (skill.type === 'block') {
+      this.playerCombat.isBlocking = true;
+      this.showMessage('你擺出防禦姿態！減傷50%！', () => {
+        this.executeEnemyCombatantTurn();
+      });
+      return;
+    }
+
+    if (skill.type === 'refine') {
+      this.tryRefinement();
+      return;
+    }
+
+    // 輕擊/重擊 → 攻擊敵方靈寵
+    if (Math.random() * 100 > skill.accuracy) {
+      this.showMessage(`你的 ${skill.name} 沒有命中！`, () => {
+        this.executeEnemyCombatantTurn();
+      });
+      return;
+    }
+
+    const result = calculatePlayerDamage(
+      this.playerCombat.atk, this.playerCombat.atkStage, this.playerCombat.level, '你',
+      this.enemyMonster.def, this.enemyMonster.defStage, false,
+      skill.power, skill.name, this.enemyMonster.level,
+    );
+    this.enemyMonster.hp = Math.max(0, this.enemyMonster.hp - result.damage);
+    this.updateInfoPanels();
+    this.showMessage(result.message, () => {
+      if (this.enemyMonster.hp <= 0) {
+        this.onEnemyDefeated();
+        return;
+      }
+      this.executeEnemyCombatantTurn();
+    });
+  }
+
+  /** 煉天大法敵方回合：40%打人類 60%打寵物 */
+  private executeEnemyCombatantTurn(): void {
+    if (this.enemyMonster.hp <= 0) {
+      this.playerCombat!.isBlocking = false;
+      this.isAnimating = false;
+      this.showActions();
+      return;
+    }
+
+    const targetHuman = this.playerCombat && this.playerCombat.hp > 0 && Math.random() < 0.4;
+
+    if (targetHuman && this.playerCombat) {
+      const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+      const enemySkill = this.enemyMonster.skills[enemySkillIndex];
+      enemySkill.currentPp--;
+
+      if (Math.random() * 100 > enemySkill.skill.accuracy) {
+        this.showMessage(`${this.enemyMonster.nickname} 的 ${enemySkill.skill.name} 沒有命中！`, () => {
+          this.playerCombat!.isBlocking = false;
+          this.isAnimating = false;
+          this.showActions();
+        });
+        return;
+      }
+
+      const result = calculatePlayerDamage(
+        this.enemyMonster.atk, this.enemyMonster.atkStage, this.enemyMonster.level, this.enemyMonster.nickname,
+        this.playerCombat.def, this.playerCombat.defStage, this.playerCombat.isBlocking,
+        enemySkill.skill.power, enemySkill.skill.name, this.playerCombat.level,
+      );
+      this.playerCombat.hp = Math.max(0, this.playerCombat.hp - result.damage);
+      this.playerCombat.isBlocking = false;
+      this.updateInfoPanels();
+      this.showMessage(result.message, () => {
+        if (this.checkCombatantEnd()) return;
+        this.isAnimating = false;
+        this.showActions();
+      });
+      return;
+    }
+
+    // 敵寵打玩家寵
+    const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+    const enemySkill = this.enemyMonster.skills[enemySkillIndex];
+    enemySkill.currentPp--;
+    this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+      if (this.playerMonster.hp <= 0) {
+        const nextAlive = getFirstAliveIndex();
+        if (nextAlive === -1) {
+          if (this.checkCombatantEnd()) return;
+        } else {
+          this.playerMonsterIndex = nextAlive;
+          this.playerMonster = getState().team[nextAlive];
+          resetStatStages(this.playerMonster);
+          this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
+          this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
+          this.updateInfoPanels();
+          this.showMessage(`換上了 ${this.playerMonster.nickname}！`, () => {
+            this.isAnimating = false;
+            this.showActions();
+          });
+          return;
+        }
+      }
+      this.isAnimating = false;
+      this.showActions();
+    });
+  }
+
+  /** 煉天大法勝負判定 */
+  private checkCombatantEnd(): boolean {
+    if (!this.playerCombat) return false;
+    const state = getState();
+    const playerPetsDead = state.team.every(m => m.hp <= 0);
+    const playerHumanDead = this.playerCombat.hp <= 0;
+
+    if (playerHumanDead || playerPetsDead) {
+      this.showMessage('你被打倒了...回到起點休息。', () => {
+        state.team.forEach(m => {
+          m.hp = m.maxHp;
+          m.atkStage = 0; m.defStage = 0; m.spdStage = 0;
+          m.skills.forEach(s => { s.currentPp = s.skill.pp; });
+        });
+        this.playerCombat!.hp = this.playerCombat!.maxHp;
+        state.currentMapId = 'qingqiu';
+        state.playerX = 3;
+        state.playerY = 3;
+        this.endBattle();
+      });
+      return true;
+    }
+    return false;
+  }
+
+  // ═══════════════════════════════════════
+  //  萬靈化型變：變化系統（切換形態）
+  // ═══════════════════════════════════════
+
+  private showTransformSelect(): void {
+    this.clearButtons();
+    this.messageText.setText('選擇變身形態（見過的靈獸）：');
+
+    const { width, height } = this.scale;
+    const state = getState();
+    const seenIds = Array.from(state.seenMonsterIds);
+
+    seenIds.forEach((id, i) => {
+      const template = MONSTERS.find(m => m.id === id);
+      if (!template) return;
+      const isCurrent = this.isTransformed && this.playerMonster.templateId === id;
+      const y = height - 85 + i * 16;
+      const label = `${template.name}${isCurrent ? ' [當前]' : ''}`;
+      const color = isCurrent ? '#555555' : '#cc66ff';
+      const btn = this.add.text(30, y, label, { fontSize: '10px', color })
+        .setInteractive({ useHandCursor: true });
+
+      if (!isCurrent) {
+        btn.on('pointerover', () => btn.setColor('#ffcc44'));
+        btn.on('pointerout', () => btn.setColor('#cc66ff'));
+        btn.on('pointerdown', () => {
+          this.isAnimating = true;
+          // HP% 繼承
+          const hpRatio = this.playerMonster.hp / this.playerMonster.maxHp;
+          const newForm = createTransformedInstance(id, state.playerCombat.level);
+          newForm.hp = Math.max(1, Math.floor(newForm.maxHp * hpRatio));
+          this.isTransformed = true;
+          this.transformedForm = newForm;
+          this.playerMonster = newForm;
+          // 更新圖示
+          this.playerSprite.setTexture(`monster_${id}`);
+          this.updateInfoPanels();
+          this.clearButtons();
+          this.showMessage(`你變身為 ${template.name}！(HP ${Math.floor(hpRatio * 100)}%)`, () => {
+            // 變身消耗回合，敵方行動
+            const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+            const enemySkill = this.enemyMonster.skills[enemySkillIndex];
+            enemySkill.currentPp--;
+            this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+              if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
+              this.isAnimating = false;
+              this.showActions();
+            });
+          });
+        });
+      }
+      this.skillButtons.push(btn);
+    });
+
+    const back = this.add.text(width / 2, height - 15, '[返回]', {
+      fontSize: '11px', color: '#889999',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    back.on('pointerdown', () => this.showActions());
+    this.skillButtons.push(back);
+  }
+
+  /** 萬靈化型變：換獸（解除變身，派出包包靈寵） */
+  private showTransformSwitchMenu(): void {
+    this.clearButtons();
+    this.messageText.setText('選擇要派出的靈獸（解除變身）：');
+
+    const { width, height } = this.scale;
+    const state = getState();
+
+    state.team.forEach((m, i) => {
+      const y = height - 85 + i * 16;
+      const color = m.hp > 0 ? '#ffffff' : '#555555';
+      const label = `${m.nickname} Lv.${m.level} HP:${m.hp}/${m.maxHp}`;
+      const btn = this.add.text(30, y, label, { fontSize: '10px', color })
+        .setInteractive({ useHandCursor: true });
+
+      if (m.hp > 0) {
+        btn.on('pointerover', () => btn.setColor('#ffcc44'));
+        btn.on('pointerout', () => btn.setColor(color));
+        btn.on('pointerdown', () => {
+          this.isAnimating = true;
+          // 解除變身，派出真正的靈寵
+          this.isTransformed = false;
+          this.transformedForm = null;
+          this.playerMonsterIndex = i;
+          this.playerMonster = m;
+          resetStatStages(this.playerMonster);
+          this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
+          this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
+          this.updateInfoPanels();
+          this.clearButtons();
+          this.showMessage(`解除變身！派出 ${m.nickname}！`, () => {
+            const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+            const enemySkill = this.enemyMonster.skills[enemySkillIndex];
+            enemySkill.currentPp--;
+            this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
+              if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
+              this.isAnimating = false;
+              this.showActions();
+            });
+          });
+        });
+      }
+      this.skillButtons.push(btn);
+    });
+
+    const back = this.add.text(width / 2, height - 15, '[返回]', {
+      fontSize: '11px', color: '#889999',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    back.on('pointerdown', () => this.showActions());
+    this.skillButtons.push(back);
+  }
+
+  // ═══════════════════════════════════════
+  //  死鬥：人類階段
+  // ═══════════════════════════════════════
+
+  /** 死鬥人類階段：顯示人類技能 */
+  private showHumanPhaseSkills(): void {
+    this.clearButtons();
+    this.messageText.setText('人類技能：');
+
+    const { width, height } = this.scale;
+
+    // Boss 戰不顯示撤退，但增加「煉化全寵」選項（Normal End 路線）
+    const skills = this.isBoss
+      ? PLAYER_SKILLS.filter(s => s.type !== 'retreat')
+      : PLAYER_SKILLS;
+
+    const displaySkills: { name: string; desc: string; color: string; action: () => void }[] = skills.map((skill, _i) => {
+      const origIndex = PLAYER_SKILLS.indexOf(skill);
+      return { name: skill.name, desc: skill.description, color: '#ff8844', action: () => this.executeHumanPhaseAction(origIndex) };
+    });
+
+    // Boss 人類階段：可煉化全部靈寵（Normal End 路線）
+    if (this.isBoss && !this.hasAbsorbedAllPets) {
+      displaySkills.push({
+        name: '煉化全寵', desc: '犧牲全部靈寵，獲得力量',
+        color: '#ff2222',
+        action: () => this.absorbAllPetsForBoss(),
+      });
+    }
+
+    displaySkills.forEach((ds, i) => {
+      const x = width / 2 - 120 + (i % 2) * 160;
+      const y = height - 68 + Math.floor(i / 2) * 26;
+      const btn = this.add.text(x, y, `${ds.name}(${ds.desc})`, {
+        fontSize: '11px', color: ds.color,
+      }).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setColor('#ffcc44'));
+      btn.on('pointerout', () => btn.setColor(ds.color));
+      btn.on('pointerdown', () => ds.action());
+      this.skillButtons.push(btn);
+    });
+  }
+
+  /** 死鬥人類階段：執行人類技能 */
+  private executeHumanPhaseAction(skillIndex: number): void {
+    if (!this.playerCombat || !this.enemyPlayerCombat) return;
+    const skill = PLAYER_SKILLS[skillIndex];
+    this.isAnimating = true;
+    this.clearButtons();
+
+    if (skill.type === 'retreat') {
+      this.showMessage('你選擇撤退...', () => this.onDeathMatchGameOver());
+      return;
+    }
+
+    if (skill.type === 'block') {
+      this.playerCombat.isBlocking = true;
+      this.showMessage('你擺出防禦姿態！減傷50%！', () => {
+        this.doEnemyHumanPhaseAttack();
+      });
+      return;
+    }
+
+    // 攻擊敵方（人類 or 靈寵）
+    if (Math.random() * 100 > skill.accuracy) {
+      this.showMessage(`你的 ${skill.name} 沒有命中！`, () => {
+        this.doEnemyHumanPhaseAttack();
+      });
+      return;
+    }
+
+    if (this.enemyIsHuman) {
+      // 人類 vs 人類
+      const result = calculatePlayerDamage(
+        this.playerCombat.atk, this.playerCombat.atkStage, this.playerCombat.level, '你',
+        this.enemyPlayerCombat.def, this.enemyPlayerCombat.defStage, this.enemyPlayerCombat.isBlocking,
+        skill.power, skill.name, this.enemyPlayerCombat.level,
+      );
+      this.enemyPlayerCombat.hp = Math.max(0, this.enemyPlayerCombat.hp - result.damage);
+      this.enemyPlayerCombat.isBlocking = false;
+      this.updateInfoPanels();
+      this.showMessage(result.message, () => {
+        if (this.enemyPlayerCombat!.hp <= 0) {
+          this.onDeathMatchVictory();
+          return;
+        }
+        this.doEnemyHumanPhaseAttack();
+      });
+    } else {
+      // 人類 vs 靈寵
+      const result = calculatePlayerDamage(
+        this.playerCombat.atk, this.playerCombat.atkStage, this.playerCombat.level, '你',
+        this.enemyMonster.def, this.enemyMonster.defStage, false,
+        skill.power, skill.name, this.enemyMonster.level,
+      );
+      this.enemyMonster.hp = Math.max(0, this.enemyMonster.hp - result.damage);
+      this.updateInfoPanels();
+      this.showMessage(result.message, () => {
+        if (this.enemyMonster.hp <= 0) {
+          this.onEnemyDefeated();
+          return;
+        }
+        this.doEnemyHumanPhaseAttack();
+      });
+    }
+  }
+
+  /** 死鬥人類階段：敵方反擊 */
+  private doEnemyHumanPhaseAttack(): void {
+    if (!this.playerCombat) return;
+
+    if (this.enemyIsHuman && this.enemyPlayerCombat) {
+      // 敵方人類攻擊玩家人類
+      const atkSkill = Math.random() < 0.6 ? PLAYER_SKILLS[0] : PLAYER_SKILLS[1];
+      if (Math.random() * 100 > atkSkill.accuracy) {
+        this.showMessage(`${this.trainerName} 的 ${atkSkill.name} 沒有命中！`, () => {
+          this.playerCombat!.isBlocking = false;
+          this.isAnimating = false;
+          this.showActions();
+        });
+        return;
+      }
+      const result = calculatePlayerDamage(
+        this.enemyPlayerCombat.atk, this.enemyPlayerCombat.atkStage, this.enemyPlayerCombat.level, this.trainerName,
+        this.playerCombat.def, this.playerCombat.defStage, this.playerCombat.isBlocking,
+        atkSkill.power, atkSkill.name, this.playerCombat.level,
+      );
+      this.playerCombat.hp = Math.max(0, this.playerCombat.hp - result.damage);
+      this.playerCombat.isBlocking = false;
+      this.updateInfoPanels();
+      this.showMessage(result.message, () => {
+        if (this.playerCombat!.hp <= 0) {
+          this.onDeathMatchGameOver();
+          return;
+        }
+        this.isAnimating = false;
+        this.showActions();
+      });
+    } else {
+      // 敵方靈寵攻擊玩家人類
+      const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+      const enemySkill = this.enemyMonster.skills[enemySkillIndex];
+      enemySkill.currentPp--;
+
+      if (Math.random() * 100 > enemySkill.skill.accuracy) {
+        this.showMessage(`${this.enemyMonster.nickname} 的 ${enemySkill.skill.name} 沒有命中！`, () => {
+          this.playerCombat!.isBlocking = false;
+          this.isAnimating = false;
+          this.showActions();
+        });
+        return;
+      }
+      const result = calculatePlayerDamage(
+        this.enemyMonster.atk, this.enemyMonster.atkStage, this.enemyMonster.level, this.enemyMonster.nickname,
+        this.playerCombat.def, this.playerCombat.defStage, this.playerCombat.isBlocking,
+        enemySkill.skill.power, enemySkill.skill.name, this.playerCombat.level,
+      );
+      this.playerCombat.hp = Math.max(0, this.playerCombat.hp - result.damage);
+      this.playerCombat.isBlocking = false;
+      this.updateInfoPanels();
+      this.showMessage(result.message, () => {
+        if (this.playerCombat!.hp <= 0) {
+          this.onDeathMatchGameOver();
+          return;
+        }
+        this.isAnimating = false;
+        this.showActions();
+      });
+    }
+  }
+
+  /** 死鬥勝利：奪取對方靈寵，NPC消失 */
+  private onDeathMatchVictory(): void {
+    const state = getState();
+    const exp = getExpReward(this.enemyTeam[0]) * 2;
+    applyPlayerExp(Math.floor(exp * 0.5));
+    recalcPlayerStats();
+
+    for (const enemy of this.enemyTeam) {
+      enemy.hp = enemy.maxHp;
+      enemy.skills.forEach(s => { s.currentPp = s.skill.pp; });
+      addMonsterToTeam(enemy);
+    }
+
+    if (this.trainerId) {
+      state.defeatedTrainers.add(this.trainerId);
+      state.defeatedDeathmatch.add(this.trainerId);
+    }
+
+    this.showMessage(`死鬥勝利！奪取了對方 ${this.enemyTeam.length} 隻靈寵！\n${this.trainerName} 消失了...`, () => {
+      this.endBattle();
+    });
+  }
+
+  /** 死鬥失敗：GAME OVER（Boss 戰 → Bad End） */
+  private onDeathMatchGameOver(): void {
+    if (this.isBoss) {
+      this.showMessage('你被冥王·幽羅徹底擊敗了...\n你的靈魂永遠沉淪於幽都之中...\n\nBAD END', () => {
+        this.isAnimating = false;
+        this.tweens.killAll();
+        this.sound.stopAll();
+        this.cameras.main.fadeOut(1000, 0, 0, 0);
+        this.time.delayedCall(1050, () => {
+          this.scene.stop();
+          this.scene.stop('Overworld');
+          this.scene.start('Ending', { endingType: 'bad' });
+        });
+      });
+      return;
+    }
+    this.showMessage('你在死鬥中被打倒了...\n\nGAME OVER', () => {
+      this.isAnimating = false;
+      this.tweens.killAll();
+      this.sound.stopAll();
+      this.cameras.main.fadeOut(1000, 0, 0, 0);
+      this.time.delayedCall(1050, () => {
+        this.scene.stop();
+        this.scene.stop('Overworld');
+        this.scene.start('MainMenu');
+      });
+    });
+  }
+
+  /** Boss 戰 Normal End 路線：煉化全部靈寵獲得力量 */
+  private absorbAllPetsForBoss(): void {
+    this.isAnimating = true;
+    this.clearButtons();
+    const state = getState();
+
+    // 計算全部靈寵的屬性加成
+    let totalHp = 0, totalAtk = 0, totalDef = 0, totalSpd = 0;
+    const petNames: string[] = [];
+    for (const m of state.team) {
+      totalHp += m.maxHp;
+      totalAtk += m.atk;
+      totalDef += m.def;
+      totalSpd += m.spd;
+      petNames.push(m.nickname);
+    }
+
+    // 靈寵全部犧牲
+    for (const m of state.team) {
+      m.hp = 0;
+    }
+
+    // 人類獲得全部靈寵屬性的 80%
+    const pc = this.playerCombat!;
+    const gainHp = Math.floor(totalHp * 0.8);
+    const gainAtk = Math.floor(totalAtk * 0.8);
+    const gainDef = Math.floor(totalDef * 0.8);
+    const gainSpd = Math.floor(totalSpd * 0.8);
+
+    pc.maxHp += gainHp;
+    pc.hp = pc.maxHp; // 滿血復活
+    pc.atk += gainAtk;
+    pc.def += gainDef;
+    pc.spd += gainSpd;
+
+    this.hasAbsorbedAllPets = true;
+
+    const namesStr = petNames.join('、');
+    this.showMessage(
+      `你決定犧牲所有靈寵的力量...\n${namesStr}化為光芒融入你的體內！\n\nHP+${gainHp} 攻+${gainAtk} 防+${gainDef} 速+${gainSpd}`,
+      () => {
+        this.updateInfoPanels();
+        this.isAnimating = false;
+        this.showActions();
+      },
+    );
+  }
+
+  // ═══════════════════════════════════════
+  //  煉天大法：煉化系統
+  // ═══════════════════════════════════════
+
+  /** 選擇煉化目標 */
+  private tryRefinement(): void {
+    this.isAnimating = true;
+    this.clearButtons();
+    const state = getState();
+
+    // 收集可煉化目標
+    const targets: { name: string; type: 'pet' | 'human' }[] = [];
+    if (this.enemyMonster.hp > 0 && this.enemyMonster.hp / this.enemyMonster.maxHp < 0.15) {
+      targets.push({ name: this.enemyMonster.nickname, type: 'pet' });
+    }
+    if (this.isDeathmatch && this.enemyPlayerCombat && this.enemyPlayerCombat.hp > 0 && this.enemyPlayerCombat.hp / this.enemyPlayerCombat.maxHp < 0.15) {
+      targets.push({ name: this.trainerName, type: 'human' });
+    }
+
+    if (targets.length === 0) {
+      this.showMessage('沒有可煉化的目標！', () => {
+        this.isAnimating = false;
+        this.showActions();
+      });
+      return;
+    }
+
+    // 只有一個目標：直接煉化
+    if (targets.length === 1) {
+      this.doRefinement(targets[0].type);
+      return;
+    }
+
+    // 多個目標：選擇
+    this.clearButtons();
+    this.messageText.setText('選擇煉化目標：');
+    const { width, height } = this.scale;
+    targets.forEach((t, i) => {
+      const btn = this.add.text(width / 2 - 60, height - 65 + i * 25, `【${t.name}】`, {
+        fontSize: '13px', color: '#ff4444',
+      }).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setColor('#ffcc44'));
+      btn.on('pointerout', () => btn.setColor('#ff4444'));
+      btn.on('pointerdown', () => this.doRefinement(t.type));
+      this.actionButtons.push(btn);
+    });
+  }
+
+  private doRefinement(targetType: 'pet' | 'human'): void {
+    this.clearButtons();
+    const state = getState();
+
+    if (targetType === 'pet') {
+      this.showMessage('嘗試煉化敵方靈寵...', () => {
+        const result = attemptRefinement(this.enemyMonster, state.playerCombat);
+        if (result.success) {
+          this.tweens.add({
+            targets: this.enemySprite,
+            scale: 0, alpha: 0, duration: 600,
+            onComplete: () => {
+              recalcPlayerStats();
+              const msg = `煉化成功！吸收了：\nHP+${result.gains.hp} 攻+${result.gains.atk} 防+${result.gains.def} 速+${result.gains.spd}`;
+              this.showMessage(msg, () => {
+                this.updateInfoPanels();
+                this.enemyMonster.hp = 0;
+                this.onEnemyDefeated();
+              });
+            },
+          });
+        } else {
+          this.showMessage('煉化失敗！靈寵掙脫了！', () => {
+            this.executeEnemyCombatantTurn();
+          });
+        }
+      });
+    } else {
+      // 煉化敵方人類
+      if (!this.enemyPlayerCombat) return;
+      this.showMessage(`嘗試煉化 ${this.trainerName}...`, () => {
+        // 使用類似公式：成功率 = 50% + (玩家lv - 敵lv)*2%
+        const rate = Math.max(10, Math.min(90, 50 + (state.playerCombat.level - this.enemyPlayerCombat!.level) * 2));
+        const success = Math.random() * 100 < rate;
+        if (success) {
+          const epc = this.enemyPlayerCombat!;
+          const gains = {
+            hp: Math.max(1, Math.floor(epc.maxHp * 0.08)),
+            atk: Math.max(1, Math.floor(epc.atk * 0.08)),
+            def: Math.max(1, Math.floor(epc.def * 0.08)),
+            spd: Math.max(1, Math.floor(epc.spd * 0.08)),
+          };
+          state.playerCombat.refinedBonusHp += gains.hp;
+          state.playerCombat.refinedBonusAtk += gains.atk;
+          state.playerCombat.refinedBonusDef += gains.def;
+          state.playerCombat.refinedBonusSpd += gains.spd;
+          epc.hp = 0;
+          recalcPlayerStats();
+          this.updateInfoPanels();
+          const msg = `煉化 ${this.trainerName} 成功！吸收了：\nHP+${gains.hp} 攻+${gains.atk} 防+${gains.def} 速+${gains.spd}`;
+          this.showMessage(msg, () => {
+            if (this.checkCombatantEnd()) return;
+            this.isAnimating = false;
+            this.showActions();
+          });
+        } else {
+          this.showMessage('煉化失敗！對方掙脫了！', () => {
+            this.executeEnemyCombatantTurn();
+          });
+        }
+      });
+    }
+  }
+
   private endBattle(): void {
     this.isAnimating = false;
     this.tweens.killAll();
@@ -923,6 +2014,9 @@ export class BattleScene extends Phaser.Scene {
     // 重置所有能力等級
     resetStatStages(this.playerMonster);
     for (const e of this.enemyTeam) resetStatStages(e);
+
+    // 停止戰鬥 BGM
+    this.sound.stopAll();
 
     this.cameras.main.fadeOut(300, 0, 0, 0);
     this.time.delayedCall(350, () => {

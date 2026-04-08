@@ -1,30 +1,59 @@
 import Phaser from 'phaser';
-import { getMap, type GameMap, type MapNpc } from '../data/maps';
-import { getState, saveGame, getFirstAliveIndex, healTeam, addMonsterToTeam } from '../utils/gameState';
-import { createMonsterInstance, MONSTERS, getCultivation, fuseMonsters, swapSkill, type MonsterInstance } from '../data/monsters';
-import { healMonster, applyExp, getExpReward } from '../utils/battle';
+import { getMap, type GameMap, type MapNpc, type MapTreasure } from '../data/maps';
+import { getState, saveGame, getFirstAliveIndex, healTeam, addMonsterToTeam, recalcPlayerStats, healPlayer } from '../utils/gameState';
+import { createMonsterInstance, MONSTERS, getCultivation, fuseMonsters, swapSkill, getTemplate, type MonsterInstance } from '../data/monsters';
+import { healMonster, applyExp, getExpReward, generateEnemyPlayerStats, generateBossPlayerStats } from '../utils/battle';
 
 const TILE_SIZE = 32;
+const TILE_KEYS = ['tile_grass', 'tile_wall', 'tile_tall_grass', 'tile_water', 'tile_exit', 'tile_path', 'tile_flower'];
+
+// 視口裁切用的 buffer（上下左右各多渲染幾格）
+const CULL_BUFFER = 3;
 
 export class OverworldScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Image;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
   private currentMap!: GameMap;
-  private tileSprites: Phaser.GameObjects.Image[] = [];
   private npcSprites: Phaser.GameObjects.Container[] = [];
   private playerTileX = 0;
   private playerTileY = 0;
   private isMoving = false;
   private moveTimer = 0;
+  private shiftKey!: Phaser.Input.Keyboard.Key;
   private dialogueBox: Phaser.GameObjects.Container | null = null;
+  private dialogueCooldown = 0;
+  private uiCamera!: Phaser.Cameras.Scene2D.Camera;
   private mapNameText!: Phaser.GameObjects.Text;
   private infoText!: Phaser.GameObjects.Text;
   private gracePeriod = 0;
   private stepsSinceEncounter = 0;
 
+  // Tile pool（視口裁切）
+  private tilePool: Phaser.GameObjects.Image[] = [];
+  private poolSize = 0;
+  private lastCullX = -999;
+  private lastCullY = -999;
+
+  // 寶物精靈
+  private treasureSprites: Phaser.GameObjects.Container[] = [];
+
+  // 小地圖
+  private minimapContainer: Phaser.GameObjects.Container | null = null;
+
+  // window keydown 綁定（需在 shutdown 時移除）
+  private boundKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+
   constructor() {
     super({ key: 'Overworld' });
+  }
+
+  shutdown(): void {
+    if (this.boundKeyHandler) {
+      window.removeEventListener('keydown', this.boundKeyHandler);
+      this.boundKeyHandler = null;
+    }
+    this.minimapContainer = null;
   }
 
   create(): void {
@@ -32,37 +61,92 @@ export class OverworldScene extends Phaser.Scene {
     this.currentMap = getMap(state.currentMapId);
     this.playerTileX = state.playerX;
     this.playerTileY = state.playerY;
+    this.minimapContainer = null;
 
-    this.renderMap();
+    this.initTilePool();
     this.createPlayer();
     this.createNpcs();
+    this.createTreasures();
     this.setupInput();
     this.createUI();
 
+    // 攝影機邊界
     this.cameras.main.setBackgroundColor(this.currentMap.bgColor);
+    this.cameras.main.setBounds(
+      0, 0,
+      this.currentMap.width * TILE_SIZE,
+      this.currentMap.height * TILE_SIZE,
+    );
+
+    // 首次裁切
+    this.lastCullX = -999;
+    this.lastCullY = -999;
+    this.cullTiles();
+
+    // 播放大地圖 BGM（如果還沒在播）
+    const bgmKey = 'bgm_overworld';
+    if (this.cache.audio.exists(bgmKey) && !this.sound.get(bgmKey)?.isPlaying) {
+      this.sound.stopAll();
+      this.sound.play(bgmKey, { loop: true, volume: 0.3 });
+    }
   }
 
-  private renderMap(): void {
-    this.tileSprites.forEach(s => s.destroy());
-    this.tileSprites = [];
+  private initTilePool(): void {
+    // 清理舊 pool
+    this.tilePool.forEach(s => s.destroy());
+    this.tilePool = [];
 
-    const tileKeys = ['tile_grass', 'tile_wall', 'tile_tall_grass', 'tile_water', 'tile_exit', 'tile_path', 'tile_flower'];
+    // 計算可見範圍：640/32/zoom=10 寬, 480/32/zoom=7.5 高，加 buffer
+    const zoom = 2;
+    const visW = Math.ceil(this.scale.width / TILE_SIZE / zoom) + CULL_BUFFER * 2 + 2;
+    const visH = Math.ceil(this.scale.height / TILE_SIZE / zoom) + CULL_BUFFER * 2 + 2;
+    this.poolSize = visW * visH;
 
-    for (let y = 0; y < this.currentMap.height; y++) {
-      for (let x = 0; x < this.currentMap.width; x++) {
-        const tileType = this.currentMap.tiles[y][x];
-        const key = tileKeys[tileType] || 'tile_grass';
-        const sprite = this.add.image(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, key);
-        sprite.setDisplaySize(TILE_SIZE, TILE_SIZE);
-        this.tileSprites.push(sprite);
+    for (let i = 0; i < this.poolSize; i++) {
+      const img = this.add.image(0, 0, 'tile_grass');
+      img.setDisplaySize(TILE_SIZE, TILE_SIZE);
+      img.setVisible(false);
+      this.tilePool.push(img);
+    }
+  }
+
+  private cullTiles(): void {
+    const cam = this.cameras.main;
+    const zoom = cam.zoom;
+
+    // 計算攝影機左上角的 tile 座標
+    const camLeft = cam.scrollX;
+    const camTop = cam.scrollY;
+    const camRight = camLeft + this.scale.width / zoom;
+    const camBottom = camTop + this.scale.height / zoom;
+
+    const startX = Math.max(0, Math.floor(camLeft / TILE_SIZE) - CULL_BUFFER);
+    const startY = Math.max(0, Math.floor(camTop / TILE_SIZE) - CULL_BUFFER);
+    const endX = Math.min(this.currentMap.width - 1, Math.ceil(camRight / TILE_SIZE) + CULL_BUFFER);
+    const endY = Math.min(this.currentMap.height - 1, Math.ceil(camBottom / TILE_SIZE) + CULL_BUFFER);
+
+    // 早退：攝影機沒移動整格就跳過
+    if (startX === this.lastCullX && startY === this.lastCullY) return;
+    this.lastCullX = startX;
+    this.lastCullY = startY;
+
+    let poolIdx = 0;
+
+    for (let y = startY; y <= endY && poolIdx < this.poolSize; y++) {
+      for (let x = startX; x <= endX && poolIdx < this.poolSize; x++) {
+        const tileType = this.currentMap.tiles[y]?.[x] ?? 1;
+        const key = TILE_KEYS[tileType] || 'tile_grass';
+        const img = this.tilePool[poolIdx];
+        img.setTexture(key);
+        img.setPosition(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2);
+        img.setVisible(true);
+        poolIdx++;
       }
     }
 
-    for (const exit of this.currentMap.exits) {
-      const ex = this.add.image(exit.x * TILE_SIZE + TILE_SIZE / 2, exit.y * TILE_SIZE + TILE_SIZE / 2, 'tile_exit');
-      ex.setDisplaySize(TILE_SIZE, TILE_SIZE);
-      this.tileSprites.push(ex);
-      this.currentMap.tiles[exit.y][exit.x] = 4;
+    // 隱藏多餘的 pool sprite
+    for (let i = poolIdx; i < this.poolSize; i++) {
+      this.tilePool[i].setVisible(false);
     }
   }
 
@@ -77,6 +161,19 @@ export class OverworldScene extends Phaser.Scene {
 
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.cameras.main.setZoom(2);
+
+    // UI 專用相機：無 zoom、無 scroll，讓 UI 互動座標正確
+    this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+    this.uiCamera.setScroll(0, 0);
+    this.uiCamera.setZoom(1);
+
+    // UI 相機忽略所有遊戲世界物件（地圖磁磚、玩家、NPC）
+    this.uiCamera.ignore(this.tilePool);
+    this.uiCamera.ignore(this.player);
+    this.npcSprites.forEach(npc => {
+      this.uiCamera.ignore(npc);
+      this.uiCamera.ignore(npc.getAll());
+    });
   }
 
   private createNpcs(): void {
@@ -124,7 +221,73 @@ export class OverworldScene extends Phaser.Scene {
         container.add(iconImg);
       }
 
+      // 死鬥中被打敗的NPC從地圖消失
+      if (npc.npcType === 'trainer' && getState().defeatedDeathmatch.has(npc.id)) {
+        container.setVisible(false);
+      }
+
       this.npcSprites.push(container);
+    }
+  }
+
+  private createTreasures(): void {
+    this.treasureSprites.forEach(s => s.destroy());
+    this.treasureSprites = [];
+
+    const state = getState();
+
+    for (const treasure of this.currentMap.treasures) {
+      if (state.collectedTreasures.has(treasure.id)) continue;
+
+      const container = this.add.container(
+        treasure.x * TILE_SIZE + TILE_SIZE / 2,
+        treasure.y * TILE_SIZE + TILE_SIZE / 2,
+      );
+      container.setDepth(4);
+
+      // 光球效果
+      let color = 0xffcc44;
+      let radius = 5;
+      if (treasure.type === 'rare_monster') { color = 0xff4488; radius = 6; }
+      else if (treasure.type === 'heal') { color = 0x44ff88; radius = 5; }
+
+      const glow = this.add.circle(0, 0, radius + 3, color, 0.2);
+      container.add(glow);
+
+      const orb = this.add.circle(0, 0, radius, color, 0.85);
+      container.add(orb);
+
+      const sparkle = this.add.circle(0, -2, 2, 0xffffff, 0.9);
+      container.add(sparkle);
+
+      // 浮動動畫
+      this.tweens.add({
+        targets: container, y: container.y - 4,
+        duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
+      this.tweens.add({
+        targets: glow, alpha: 0.1,
+        duration: 800, yoyo: true, repeat: -1,
+      });
+
+      // 記錄 treasure id 在 container data 上
+      container.setData('treasureId', treasure.id);
+      this.treasureSprites.push(container);
+    }
+
+    // UI 相機忽略寶物
+    this.treasureSprites.forEach(t => {
+      this.uiCamera.ignore(t);
+      this.uiCamera.ignore(t.getAll());
+    });
+  }
+
+  /** 完成 UI 容器建構後呼叫：讓主相機忽略容器及所有子物件，只由 UI 相機渲染 */
+  private finalizeUI(container: Phaser.GameObjects.Container): void {
+    this.cameras.main.ignore(container);
+    const list = container.getAll();
+    if (list.length > 0) {
+      this.cameras.main.ignore(list);
     }
   }
 
@@ -133,38 +296,45 @@ export class OverworldScene extends Phaser.Scene {
       fontSize: '14px', fontFamily: 'serif', color: '#ffcc44',
       backgroundColor: '#000000aa', padding: { x: 8, y: 4 },
     }).setScrollFactor(0).setDepth(100);
+    this.cameras.main.ignore(this.mapNameText);
 
     this.infoText = this.add.text(10, 34, '', {
       fontSize: '10px', color: '#aabbcc',
       backgroundColor: '#000000aa', padding: { x: 6, y: 3 },
     }).setScrollFactor(0).setDepth(100);
+    this.cameras.main.ignore(this.infoText);
 
     this.updateInfoText();
 
     // 操作提示 — 右上角
-    this.add.text(this.scale.width - 10, 10, '方向鍵/WASD 移動', {
-      fontSize: '9px', color: '#667788',
-      backgroundColor: '#000000aa', padding: { x: 6, y: 2 },
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+    const hints = [
+      this.add.text(this.scale.width - 10, 10, '方向鍵/WASD 移動 ｜ 滑鼠點擊互動', {
+        fontSize: '9px', color: '#667788',
+        backgroundColor: '#000000aa', padding: { x: 6, y: 2 },
+      }).setOrigin(1, 0).setScrollFactor(0).setDepth(100),
 
-    this.add.text(this.scale.width - 10, 26, 'Z/Space/Enter 對話互動', {
-      fontSize: '9px', color: '#667788',
-      backgroundColor: '#000000aa', padding: { x: 6, y: 2 },
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
-
-    this.add.text(this.scale.width - 10, 42, 'M/ESC 開啟選單', {
-      fontSize: '9px', color: '#667788',
-      backgroundColor: '#000000aa', padding: { x: 6, y: 2 },
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+      this.add.text(this.scale.width - 10, 26, 'Z/Space 對話 ｜ M 地圖 ｜ B/ESC 選單', {
+        fontSize: '9px', color: '#667788',
+        backgroundColor: '#000000aa', padding: { x: 6, y: 2 },
+      }).setOrigin(1, 0).setScrollFactor(0).setDepth(100),
+    ];
+    hints.forEach(h => this.cameras.main.ignore(h));
   }
 
   private updateInfoText(): void {
     const state = getState();
+    if (state.team.length === 0) return;
     const alive = state.team.filter(m => m.hp > 0).length;
     const lead = state.team[0];
     const cult = getCultivation(lead.level);
+    const pc = state.playerCombat;
+    let methodInfo = `人類Lv.${pc.level} HP:${pc.hp}/${pc.maxHp}`;
+    if (state.cultivationMethod === '萬靈化型變') {
+      methodInfo = `見過：${state.seenMonsterIds.size}種 人類Lv.${pc.level}`;
+    }
     this.infoText.setText(
-      `${lead.nickname} ${cult.displayName}　隊伍：${alive}/${state.team.length}　圖鑑：${state.caughtIds.size}/10`
+      `${lead.nickname} ${cult.displayName}　隊伍：${alive}/${state.team.length}(上限6)　圖鑑：${state.caughtIds.size}/10\n` +
+      `[${state.cultivationMethod}] ${methodInfo}`
     );
   }
 
@@ -178,24 +348,52 @@ export class OverworldScene extends Phaser.Scene {
       D: this.input.keyboard.addKey('D'),
       Z: this.input.keyboard.addKey('Z'),
       M: this.input.keyboard.addKey('M'),
+      B: this.input.keyboard.addKey('B'),
     };
+    this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
 
-    this.wasd.Z.on('down', () => this.interact());
-    this.wasd.M.on('down', () => this.showQuickMenu());
+    // 先移除舊的 handler（scene.restart 時避免重複綁定）
+    if (this.boundKeyHandler) {
+      window.removeEventListener('keydown', this.boundKeyHandler);
+    }
 
-    // 額外支援 Space / Enter 作為對話鍵, ESC 開選單
-    const space = this.input.keyboard.addKey('SPACE');
-    const enter = this.input.keyboard.addKey('ENTER');
-    const esc = this.input.keyboard.addKey('ESC');
-    space.on('down', () => this.interact());
-    enter.on('down', () => this.interact());
-    esc.on('down', () => {
-      if (this.dialogueBox) return;
-      this.showQuickMenu();
-    });
+    // 統一使用 window keydown，避免 Phaser addKey 和 window 事件雙觸發
+    this.boundKeyHandler = (e: KeyboardEvent) => {
+      if (!this.scene.isActive()) return;
+
+      // M 鍵地圖：即使對話中也不影響（獨立處理）
+      if (e.code === 'KeyM') {
+        e.preventDefault();
+        this.toggleMinimap();
+        return;
+      }
+
+      // 小地圖打開時，ESC 也關閉小地圖
+      if (this.minimapContainer) {
+        if (e.code === 'Escape') {
+          e.preventDefault();
+          this.toggleMinimap();
+        }
+        return;
+      }
+
+      // 對話/選單打開時，不觸發 interact 和 menu
+      if (this.dialogueBox || this.dialogueCooldown > 0) return;
+
+      if (e.code === 'KeyZ' || e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        this.interact();
+      } else if (e.code === 'KeyB' || e.code === 'Escape') {
+        e.preventDefault();
+        this.showQuickMenu();
+      }
+    };
+    window.addEventListener('keydown', this.boundKeyHandler);
   }
 
   update(_time: number, delta: number): void {
+    this.cullTiles();
+    if (this.dialogueCooldown > 0) this.dialogueCooldown -= delta;
     if (this.dialogueBox || this.isMoving) return;
 
     this.moveTimer -= delta;
@@ -228,18 +426,21 @@ export class OverworldScene extends Phaser.Scene {
     state.playerX = newX;
     state.playerY = newY;
 
+    const isSprinting = this.shiftKey.isDown;
+    const moveDuration = isSprinting ? 50 : 120;
+
     this.tweens.add({
       targets: this.player,
       x: newX * TILE_SIZE + TILE_SIZE / 2,
       y: newY * TILE_SIZE + TILE_SIZE / 2,
-      duration: 120,
+      duration: moveDuration,
       onComplete: () => {
         this.isMoving = false;
         this.checkTile(newX, newY);
       },
     });
 
-    this.moveTimer = 50;
+    this.moveTimer = isSprinting ? 10 : 50;
   }
 
   private checkTile(x: number, y: number): void {
@@ -252,6 +453,9 @@ export class OverworldScene extends Phaser.Scene {
         return;
       }
     }
+
+    // 寶物拾取
+    this.checkTreasurePickup(x, y);
 
     if (tile === 2) {
       if (this.gracePeriod > 0) {
@@ -266,6 +470,72 @@ export class OverworldScene extends Phaser.Scene {
         this.stepsSinceEncounter = 0;
         this.triggerWildEncounter();
       }
+    }
+  }
+
+  private checkTreasurePickup(x: number, y: number): void {
+    const state = getState();
+    const treasure = this.currentMap.treasures.find(
+      t => t.x === x && t.y === y && !state.collectedTreasures.has(t.id),
+    );
+    if (!treasure) return;
+
+    state.collectedTreasures.add(treasure.id);
+
+    // 移除精靈
+    const spriteIdx = this.treasureSprites.findIndex(s => s.getData('treasureId') === treasure.id);
+    if (spriteIdx >= 0) {
+      const sprite = this.treasureSprites[spriteIdx];
+      // 拾取特效
+      this.tweens.add({
+        targets: sprite, y: sprite.y - 30, alpha: 0,
+        duration: 400, onComplete: () => sprite.destroy(),
+      });
+      this.treasureSprites.splice(spriteIdx, 1);
+    }
+
+    if (treasure.type === 'exp') {
+      // 經驗分配給全隊
+      const amount = treasure.amount || 100;
+      const perMon = Math.floor(amount / Math.max(1, state.team.length));
+      const levelUps: string[] = [];
+      for (const m of state.team) {
+        if (m.hp <= 0) continue;
+        const result = applyExp(m, perMon);
+        if (result.leveled) {
+          levelUps.push(`${m.nickname} 突破至 ${getCultivation(result.newLevel).displayName}！`);
+        }
+      }
+      const msg = levelUps.length > 0
+        ? `拾取了${treasure.label}！全隊獲得 ${amount} EXP\n${levelUps[levelUps.length - 1]}`
+        : `拾取了${treasure.label}！全隊獲得 ${amount} EXP`;
+      this.showNotification(msg, 0xffcc44);
+      this.updateInfoText();
+
+    } else if (treasure.type === 'rare_monster') {
+      // 觸發稀有靈獸戰鬥
+      if (getFirstAliveIndex() === -1) return;
+      const wildMonster = createMonsterInstance(treasure.monsterId!, treasure.monsterLevel!);
+      this.showNotification(treasure.label, 0xff4488);
+      this.cameras.main.flash(400, 255, 100, 200);
+      this.time.delayedCall(500, () => {
+        this.scene.launch('Battle', {
+          type: 'wild',
+          enemies: [wildMonster],
+          onEnd: () => {
+            this.gracePeriod = 10;
+            this.stepsSinceEncounter = 0;
+            this.updateInfoText();
+          },
+        });
+        this.scene.pause();
+      });
+
+    } else if (treasure.type === 'heal') {
+      healTeam();
+      healPlayer();
+      this.updateInfoText();
+      this.showNotification(`發現了${treasure.label}！全隊完全恢復！`, 0x44ff88);
     }
   }
 
@@ -301,8 +571,8 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private interact(): void {
-    // 如果已在對話/選單中，不要重複觸發
-    if (this.dialogueBox) return;
+    // 如果已在對話/選單中，或對話剛結束的冷卻期，不要重複觸發
+    if (this.dialogueBox || this.dialogueCooldown > 0) return;
 
     const dirs = [
       { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
@@ -340,10 +610,10 @@ export class OverworldScene extends Phaser.Scene {
       }
 
       if (dialogueIndex >= npc.dialogue.length) {
-        // 對話完全結束
+        // 對話完全結束 — 設定 300ms 冷卻防止同一按鍵又觸發 interact
         dialogueActive = false;
+        this.dialogueCooldown = 300;
         state.talkedNpcs.add(npc.id);
-        // 延遲一幀再執行 NPC 功能，確保 dialogueBox 狀態乾淨
         this.time.delayedCall(50, () => {
           this.handleNpcAction(npc);
         });
@@ -438,6 +708,7 @@ export class OverworldScene extends Phaser.Scene {
       };
 
       this.dialogueBox = container;
+      this.finalizeUI(container);
       dialogueIndex++;
 
       // 推進邏輯 — 用 advancing flag 防止同一幀多次觸發
@@ -492,8 +763,9 @@ export class OverworldScene extends Phaser.Scene {
     switch (npc.npcType) {
       case 'healer':
         healTeam();
+        healPlayer();
         this.updateInfoText();
-        this.showNotification('所有靈獸已完全恢復！', 0x44ff88);
+        this.showNotification('所有靈獸及人類已完全恢復！', 0x44ff88);
         break;
 
       case 'fusion':
@@ -502,27 +774,121 @@ export class OverworldScene extends Phaser.Scene {
 
       case 'trainer':
         if (npc.team && !state.defeatedTrainers.has(npc.id)) {
-          const enemies = npc.team.map(t => createMonsterInstance(t.monsterId, t.level));
-          this.cameras.main.flash(300, 255, 100, 100);
-          this.time.delayedCall(300, () => {
-            this.scene.launch('Battle', {
-              type: 'trainer',
-              trainerName: npc.name,
-              trainerId: npc.id,
-              enemies,
-              onEnd: () => {
-                this.gracePeriod = 10;
-                this.stepsSinceEncounter = 0;
-                this.updateInfoText();
-              },
-            });
-            this.scene.pause();
-          });
+          if (npc.id === 'boss') {
+            this.launchBossBattle(npc);
+          } else {
+            this.showBattleTypeChoice(npc);
+          }
         } else if (npc.team && state.defeatedTrainers.has(npc.id)) {
           this.showNotification('你已經打敗過這個對手了。', 0xaabbcc);
         }
         break;
     }
+  }
+
+  private showBattleTypeChoice(npc: MapNpc): void {
+    if (this.dialogueBox) return;
+    const camW = this.scale.width;
+    const camH = this.scale.height;
+
+    const container = this.add.container(0, 0);
+    container.setScrollFactor(0).setDepth(200);
+
+    const bg = this.add.rectangle(camW / 2, camH / 2, 240, 120, 0x0a0a1a, 0.95);
+    bg.setStrokeStyle(2, 0xffcc44);
+    container.add(bg);
+
+    container.add(this.add.text(camW / 2, camH / 2 - 40, '選擇對戰方式', {
+      fontSize: '14px', fontFamily: 'serif', color: '#ffcc44',
+    }).setOrigin(0.5));
+
+    const launchBattle = (type: 'trainer' | 'deathmatch') => {
+      container.destroy();
+      this.dialogueBox = null;
+      const enemies = npc.team!.map(t => createMonsterInstance(t.monsterId, t.level));
+      this.cameras.main.flash(300, 255, 100, 100);
+      this.time.delayedCall(300, () => {
+        const data: Record<string, unknown> = {
+          type,
+          trainerName: npc.name,
+          trainerId: npc.id,
+          enemies,
+          onEnd: () => {
+            this.gracePeriod = 10;
+            this.stepsSinceEncounter = 0;
+            this.updateInfoText();
+            // 死鬥勝利後隱藏NPC精靈
+            if (type === 'deathmatch' && getState().defeatedDeathmatch.has(npc.id)) {
+              const npcIdx = this.currentMap.npcs.indexOf(npc);
+              if (npcIdx >= 0 && this.npcSprites[npcIdx]) {
+                this.npcSprites[npcIdx].setVisible(false);
+              }
+            }
+          },
+        };
+        if (type === 'deathmatch') {
+          data.enemyPlayerStats = generateEnemyPlayerStats(enemies);
+        }
+        this.scene.launch('Battle', data);
+        this.scene.pause();
+      });
+    };
+
+    const normalBtn = this.add.text(camW / 2 - 60, camH / 2, '【普通對戰】', {
+      fontSize: '13px', color: '#ffffff',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    normalBtn.on('pointerover', () => normalBtn.setColor('#ffcc44'));
+    normalBtn.on('pointerout', () => normalBtn.setColor('#ffffff'));
+    normalBtn.on('pointerdown', () => launchBattle('trainer'));
+    container.add(normalBtn);
+
+    const deathBtn = this.add.text(camW / 2 + 60, camH / 2, '【死　鬥】', {
+      fontSize: '13px', color: '#ff4444',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    deathBtn.on('pointerover', () => deathBtn.setColor('#ffcc44'));
+    deathBtn.on('pointerout', () => deathBtn.setColor('#ff4444'));
+    deathBtn.on('pointerdown', () => launchBattle('deathmatch'));
+    container.add(deathBtn);
+
+    container.add(this.add.text(camW / 2, camH / 2 + 25, '死鬥：人+寵同時出戰，敗者失去所有靈寵', {
+      fontSize: '8px', color: '#ff6666',
+    }).setOrigin(0.5));
+
+    const cancelBtn = this.add.text(camW / 2, camH / 2 + 45, '取消', {
+      fontSize: '11px', color: '#667788',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    cancelBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
+    container.add(cancelBtn);
+
+    this.dialogueBox = container;
+    this.finalizeUI(container);
+  }
+
+  private launchBossBattle(npc: MapNpc): void {
+    const enemies = npc.team!.map(t => createMonsterInstance(t.monsterId, t.level));
+    this.cameras.main.flash(500, 200, 0, 0);
+    this.time.delayedCall(500, () => {
+      this.scene.launch('Battle', {
+        type: 'deathmatch',
+        trainerName: npc.name,
+        trainerId: npc.id,
+        enemies,
+        isBoss: true,
+        enemyPlayerStats: generateBossPlayerStats(enemies),
+        onEnd: () => {
+          this.gracePeriod = 10;
+          this.stepsSinceEncounter = 0;
+          this.updateInfoText();
+          if (getState().defeatedDeathmatch.has(npc.id)) {
+            const npcIdx = this.currentMap.npcs.indexOf(npc);
+            if (npcIdx >= 0 && this.npcSprites[npcIdx]) {
+              this.npcSprites[npcIdx].setVisible(false);
+            }
+          }
+        },
+      });
+      this.scene.pause();
+    });
   }
 
   private showNotification(msg: string, color: number): void {
@@ -532,6 +898,7 @@ export class OverworldScene extends Phaser.Scene {
       backgroundColor: '#000000cc', padding: { x: 10, y: 6 },
       fontStyle: 'bold',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(300);
+    this.cameras.main.ignore(text);
 
     this.tweens.add({
       targets: text,
@@ -649,6 +1016,7 @@ export class OverworldScene extends Phaser.Scene {
     container.add(closeBtn);
 
     this.dialogueBox = container;
+    this.finalizeUI(container);
   }
 
   private showFusionResult(monster: MonsterInstance, extraMsg: string): void {
@@ -697,6 +1065,7 @@ export class OverworldScene extends Phaser.Scene {
     container.add(closeBtn);
 
     this.dialogueBox = container;
+    this.finalizeUI(container);
   }
 
   private transitionToMap(mapId: string, targetX: number, targetY: number): void {
@@ -712,6 +1081,134 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════
+  //  小地圖
+  // ═══════════════════════════════════
+  private toggleMinimap(): void {
+    if (this.minimapContainer) {
+      this.minimapContainer.destroy();
+      this.minimapContainer = null;
+      return;
+    }
+
+    const camW = this.scale.width;
+    const camH = this.scale.height;
+    const map = this.currentMap;
+
+    // 計算縮放比例，讓地圖填滿面板（留 padding）
+    const panelW = camW - 40;
+    const panelH = camH - 60;
+    const scale = Math.min(panelW / map.width, panelH / map.height);
+    const mapDrawW = Math.floor(map.width * scale);
+    const mapDrawH = Math.floor(map.height * scale);
+    const offsetX = Math.floor((camW - mapDrawW) / 2);
+    const offsetY = Math.floor((camH - mapDrawH) / 2) + 10;
+
+    const container = this.add.container(0, 0);
+    container.setScrollFactor(0).setDepth(250);
+
+    // 半透明背景
+    const bg = this.add.rectangle(camW / 2, camH / 2, camW, camH, 0x000000, 0.85);
+    container.add(bg);
+
+    // 標題
+    container.add(this.add.text(camW / 2, 8, `${map.name} — 地圖`, {
+      fontSize: '13px', fontFamily: 'serif', color: '#ffcc44',
+    }).setOrigin(0.5));
+
+    // 用 RenderTexture 繪製地圖
+    const rt = this.add.renderTexture(offsetX, offsetY, mapDrawW, mapDrawH);
+    rt.setOrigin(0, 0);
+
+    // 色彩對照表
+    const tileColors: Record<number, number> = {
+      0: 0x4a8c3f, // 草地
+      1: 0x555555, // 牆壁
+      2: 0x2d6b1e, // 高草
+      3: 0x2244aa, // 水
+      4: 0xffcc44, // 出口
+      5: 0x998866, // 石板路
+      6: 0xff88cc, // 花
+    };
+
+    // 繪製像素地圖
+    const pixelSize = Math.max(1, Math.floor(scale));
+    const gfx = this.make.graphics({ x: 0, y: 0 });
+
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        const tileType = map.tiles[y]?.[x] ?? 1;
+        const color = tileColors[tileType] ?? 0x000000;
+        gfx.fillStyle(color);
+        gfx.fillRect(
+          Math.floor(x * scale),
+          Math.floor(y * scale),
+          pixelSize, pixelSize,
+        );
+      }
+    }
+
+    // NPC 標記
+    for (const npc of map.npcs) {
+      let npcColor = 0xffffff;
+      if (npc.npcType === 'healer') npcColor = 0x44ff88;
+      else if (npc.npcType === 'trainer') npcColor = 0xff4444;
+      else if (npc.npcType === 'fusion') npcColor = 0xff8844;
+      gfx.fillStyle(npcColor);
+      const nx = Math.floor(npc.x * scale);
+      const ny = Math.floor(npc.y * scale);
+      gfx.fillRect(nx - 1, ny - 1, 3, 3);
+    }
+
+    // 玩家位置（閃爍亮點）
+    gfx.fillStyle(0x00ffff);
+    const px = Math.floor(this.playerTileX * scale);
+    const py = Math.floor(this.playerTileY * scale);
+    gfx.fillRect(px - 1, py - 1, 3, 3);
+
+    rt.draw(gfx);
+    gfx.destroy();
+    container.add(rt);
+
+    // 玩家閃爍標記（覆蓋在 rt 上方）
+    const playerDot = this.add.circle(offsetX + px, offsetY + py, 3, 0x00ffff);
+    container.add(playerDot);
+    this.tweens.add({
+      targets: playerDot, alpha: 0.2,
+      duration: 400, yoyo: true, repeat: -1,
+    });
+
+    // 圖例
+    const legendY = offsetY + mapDrawH + 6;
+    const legends = [
+      { color: '#4a8c3f', label: '草地' },
+      { color: '#2d6b1e', label: '高草' },
+      { color: '#998866', label: '路' },
+      { color: '#2244aa', label: '水' },
+      { color: '#ffcc44', label: '出口' },
+      { color: '#00ffff', label: '你' },
+    ];
+    legends.forEach((leg, i) => {
+      const lx = 20 + i * 70;
+      container.add(this.add.rectangle(lx, legendY, 8, 8, parseInt(leg.color.replace('#', '0x'))).setOrigin(0, 0.5));
+      container.add(this.add.text(lx + 12, legendY, leg.label, {
+        fontSize: '8px', color: '#aabbcc',
+      }).setOrigin(0, 0.5));
+    });
+
+    // 關閉提示
+    container.add(this.add.text(camW / 2, camH - 10, '按 M 或點擊關閉', {
+      fontSize: '9px', color: '#667788',
+    }).setOrigin(0.5));
+
+    // 點擊關閉
+    bg.setInteractive();
+    bg.on('pointerdown', () => this.toggleMinimap());
+
+    this.minimapContainer = container;
+    this.finalizeUI(container);
+  }
+
+  // ═══════════════════════════════════
   //  選單系統
   // ═══════════════════════════════════
   private showQuickMenu(): void {
@@ -723,7 +1220,7 @@ export class OverworldScene extends Phaser.Scene {
     const container = this.add.container(0, 0);
     container.setScrollFactor(0).setDepth(200);
 
-    const bg = this.add.rectangle(camW / 2, camH / 2, 220, 230, 0x0a0a1a, 0.95);
+    const bg = this.add.rectangle(camW / 2, camH / 2, 220, 255, 0x0a0a1a, 0.95);
     bg.setStrokeStyle(2, 0xffcc44);
     container.add(bg);
 
@@ -734,8 +1231,8 @@ export class OverworldScene extends Phaser.Scene {
     const options = [
       { icon: 'icon_backpack', text: '靈獸背包', action: () => this.showBackpack(container) },
       { icon: 'icon_absorb', text: '練化互吃', action: () => this.showAbsorptionMenu(container) },
+      { icon: 'icon_absorb', text: '練妖壺', action: () => { container.destroy(); this.dialogueBox = null; this.showFusionMenu(); } },
       { icon: 'icon_pokedex', text: '靈獸圖鑑', action: () => this.showPokedex(container) },
-      { icon: 'icon_heal', text: '回復全隊', action: () => { healTeam(); this.updateInfoText(); closeMenu(); this.showNotification('全隊已恢復！', 0x44ff88); } },
       { icon: 'icon_save', text: '儲存遊戲', action: () => { saveGame(); closeMenu(); this.showNotification('遊戲已儲存！', 0x44aaff); } },
       { icon: 'icon_close', text: '返回遊戲', action: () => closeMenu() },
     ];
@@ -760,6 +1257,7 @@ export class OverworldScene extends Phaser.Scene {
     });
 
     this.dialogueBox = container;
+    this.finalizeUI(container);
 
     const closeMenu = () => {
       container.destroy();
@@ -821,7 +1319,7 @@ export class OverworldScene extends Phaser.Scene {
       }));
 
       // 經驗值
-      const expNeeded = m.level <= 30 ? m.level * 40 + 20 : m.level * 80;
+      const expNeeded = m.level <= 30 ? m.level * 20 + 10 : m.level * 40;
       container.add(this.add.text(camW / 2 + 10, startY + 22, `EXP:${m.exp}/${expNeeded}`, {
         fontSize: '8px', color: '#667788',
       }));
@@ -856,6 +1354,7 @@ export class OverworldScene extends Phaser.Scene {
     container.add(closeBtn);
 
     this.dialogueBox = container;
+    this.finalizeUI(container);
   }
 
   // ═══════════════════════════════════
@@ -901,7 +1400,7 @@ export class OverworldScene extends Phaser.Scene {
         // 計算此靈獸累積的總經驗值
         let totalExp = m.exp;
         for (let lv = 1; lv < m.level; lv++) {
-          totalExp += lv <= 30 ? lv * 40 + 20 : lv * 80;
+          totalExp += lv <= 30 ? lv * 20 + 10 : lv * 40;
         }
 
         let label = `${m.nickname} ${cult.displayName}`;
@@ -962,10 +1461,26 @@ export class OverworldScene extends Phaser.Scene {
         // 計算祭品的累積經驗
         let foodTotalExp = food.exp;
         for (let lv = 1; lv < food.level; lv++) {
-          foodTotalExp += lv <= 30 ? lv * 40 + 20 : lv * 80;
+          foodTotalExp += lv <= 30 ? lv * 20 + 10 : lv * 40;
         }
 
-        const confirmBtn = this.add.text(camW / 2, camH - 35, `確認練化：${eater.nickname} 吞噬 ${food.nickname} (+${foodTotalExp} EXP)`, {
+        // 同角色 1.5x，同屬性 1.25x
+        let bonusMul = 1;
+        let bonusTag = '';
+        if (eater.templateId === food.templateId) {
+          bonusMul = 1.5;
+          bonusTag = ' [同種×1.5]';
+        } else {
+          const eaterElem = getTemplate(eater.templateId).element;
+          const foodElem = getTemplate(food.templateId).element;
+          if (eaterElem === foodElem) {
+            bonusMul = 1.25;
+            bonusTag = ' [同屬×1.25]';
+          }
+        }
+        foodTotalExp = Math.floor(foodTotalExp * bonusMul);
+
+        const confirmBtn = this.add.text(camW / 2, camH - 35, `確認練化：${eater.nickname} 吞噬 ${food.nickname} (+${foodTotalExp} EXP)${bonusTag}`, {
           fontSize: '10px', color: '#ff6644', fontStyle: 'bold',
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
@@ -976,7 +1491,7 @@ export class OverworldScene extends Phaser.Scene {
           let totalGained = foodTotalExp;
           const results: string[] = [];
           while (totalGained > 0 && eater.level < 42) {
-            const expNeeded = eater.level <= 30 ? eater.level * 40 + 20 : eater.level * 80;
+            const expNeeded = eater.level <= 30 ? eater.level * 20 + 10 : eater.level * 40;
             const remaining = expNeeded - eater.exp;
             if (totalGained >= remaining) {
               totalGained -= remaining;
@@ -1015,6 +1530,9 @@ export class OverworldScene extends Phaser.Scene {
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
       container.add(closeBtn);
+
+      // 每次 redraw 後重新註冊 UI 相機
+      this.finalizeUI(container);
     };
 
     const container = this.add.container(0, 0);
@@ -1065,7 +1583,7 @@ export class OverworldScene extends Phaser.Scene {
       container.add(this.add.text(110, 54, `HP:${m.hp}/${m.maxHp} 攻:${m.atk} 防:${m.def} 速:${m.spd}`, {
         fontSize: '8px', color: '#aabbcc',
       }));
-      const expNeeded = m.level <= 30 ? m.level * 40 + 20 : m.level * 80;
+      const expNeeded = m.level <= 30 ? m.level * 20 + 10 : m.level * 40;
       container.add(this.add.text(110, 65, `EXP: ${m.exp}/${expNeeded}`, {
         fontSize: '8px', color: '#667788',
       }));
@@ -1156,6 +1674,9 @@ export class OverworldScene extends Phaser.Scene {
         this.showBackpack(dummyContainer);
       });
       container.add(backBtn);
+
+      // 每次 redraw 後重新註冊 UI 相機
+      this.finalizeUI(container);
     };
 
     const container = this.add.container(0, 0);
@@ -1230,5 +1751,6 @@ export class OverworldScene extends Phaser.Scene {
     container.add(closeBtn);
 
     this.dialogueBox = container;
+    this.finalizeUI(container);
   }
 }
