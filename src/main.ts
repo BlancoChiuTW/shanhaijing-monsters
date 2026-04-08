@@ -8,8 +8,8 @@ import { EndingScene } from './scenes/EndingScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 640,
-  height: 480,
+  width: 960,
+  height: 540,
   parent: document.body,
   backgroundColor: '#000000',
   pixelArt: true,
