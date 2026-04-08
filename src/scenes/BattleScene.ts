@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { type MonsterInstance, type Skill, type Element, type CultivationMethod, type PlayerCombatStats, getTemplate, getStatStageMul, getCultivation, PLAYER_SKILLS, REFINE_PLAYER_SKILLS, MONSTERS, createTransformedInstance } from '../data/monsters';
-import { calculateDamage, calculateCatchRate, getExpReward, applyExp, applyBuffSkill, enemyChooseAction, resetStatStages, calculatePlayerDamage, attemptRefinement } from '../utils/battle';
+import { calculateDamage, calculateCatchRate, getExpReward, applyExp, applyBuffSkill, enemyChooseAction, resetStatStages, calculatePlayerDamage, attemptRefinement, processStatusDamage, decayStatStages, clearStatus } from '../utils/battle';
 import { getState, addMonsterToTeam, getFirstAliveIndex, applyPlayerExp, recalcPlayerStats, addSeenMonster, isTeamFull } from '../utils/gameState';
 
 interface BattleData {
@@ -95,8 +95,8 @@ export class BattleScene extends Phaser.Scene {
     this.hasAbsorbedAllPets = false;
     this.onEnd = data.onEnd;
 
-    // 重置所有能力等級
-    for (const e of this.enemyTeam) resetStatStages(e);
+    // 重置所有能力等級與狀態
+    for (const e of this.enemyTeam) { resetStatStages(e); clearStatus(e); }
 
     const state = getState();
     this.cultivationMethod = state.cultivationMethod;
@@ -104,6 +104,7 @@ export class BattleScene extends Phaser.Scene {
     this.playerMonsterIndex = getFirstAliveIndex();
     this.playerMonster = state.team[this.playerMonsterIndex];
     resetStatStages(this.playerMonster);
+    clearStatus(this.playerMonster);
 
     // 記錄看過的靈獸
     for (const e of this.enemyTeam) addSeenMonster(e.templateId);
@@ -236,12 +237,15 @@ export class BattleScene extends Phaser.Scene {
     const eShiny = this.enemyMonster.isShiny ? '[異]' : '';
     const transformTag = this.isTransformed ? '[變身]' : '';
 
+    const pStatusTag = this.playerMonster.statusCondition === 'burn' ? ' [灼]' : this.playerMonster.statusCondition === 'poison' ? ' [毒]' : '';
+    const eStatusTag = this.enemyMonster.statusCondition === 'burn' ? ' [灼]' : this.enemyMonster.statusCondition === 'poison' ? ' [毒]' : '';
+
     // 敵方顯示
     if (this.enemyIsHuman && this.enemyPlayerCombat) {
       this.enemyInfoText.setText(`${this.trainerName} Lv.${this.enemyPlayerCombat.level}\nHP:${this.enemyPlayerCombat.hp}/${this.enemyPlayerCombat.maxHp}`);
     } else {
       this.enemyInfoText.setText(
-        `${eShiny}${this.enemyMonster.nickname} ${eCult.displayName}\nHP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}${eStages}`
+        `${eShiny}${this.enemyMonster.nickname} ${eCult.displayName}${eStatusTag}\nHP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}${eStages}`
       );
     }
 
@@ -250,7 +254,7 @@ export class BattleScene extends Phaser.Scene {
       this.playerInfoText.setText(`靈獸師 Lv.${this.playerCombat.level}\nHP:${this.playerCombat.hp}/${this.playerCombat.maxHp}`);
     } else {
       this.playerInfoText.setText(
-        `${transformTag}${pShiny}${this.playerMonster.nickname} ${pCult.displayName}\nHP:${this.playerMonster.hp}/${this.playerMonster.maxHp}${pStages}`
+        `${transformTag}${pShiny}${this.playerMonster.nickname} ${pCult.displayName}${pStatusTag}\nHP:${this.playerMonster.hp}/${this.playerMonster.maxHp}${pStages}`
       );
     }
 
@@ -401,6 +405,8 @@ export class BattleScene extends Phaser.Scene {
       case 'statUp': return '[增]';
       case 'statDown': return '[減]';
       case 'priority': return '[先]';
+      case 'burn': return '[灼]';
+      case 'poison': return '[毒]';
       default: return '';
     }
   }
@@ -613,7 +619,7 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+    const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
     const enemySkill = this.enemyMonster.skills[enemySkillIndex];
 
     const playerFirst = this.determineFirstAttacker(playerSkill.skill, enemySkill.skill);
@@ -626,8 +632,10 @@ export class BattleScene extends Phaser.Scene {
         this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
           if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
           if (this.enemyMonster.hp <= 0) { this.onEnemyDefeated(); return; }
-          this.isAnimating = false;
-          this.showActions();
+          this.processEndOfTurn(() => {
+            this.isAnimating = false;
+            this.showActions();
+          });
         });
       });
     } else {
@@ -638,8 +646,10 @@ export class BattleScene extends Phaser.Scene {
         this.doTurnAction(this.playerMonster, this.enemyMonster, playerSkill.skill, true, () => {
           if (this.enemyMonster.hp <= 0) { this.onEnemyDefeated(); return; }
           if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
-          this.isAnimating = false;
-          this.showActions();
+          this.processEndOfTurn(() => {
+            this.isAnimating = false;
+            this.showActions();
+          });
         });
       });
     }
@@ -830,6 +840,47 @@ export class BattleScene extends Phaser.Scene {
         });
       },
     });
+  }
+
+  /** 回合結束處理：狀態異常傷害 + buff衰減 */
+  private processEndOfTurn(onDone: () => void): void {
+    const messages: string[] = [];
+
+    // 處理玩家靈獸狀態傷害
+    const playerStatus = processStatusDamage(this.playerMonster);
+    if (playerStatus) messages.push(playerStatus.message);
+
+    // 處理敵方靈獸狀態傷害
+    const enemyStatus = processStatusDamage(this.enemyMonster);
+    if (enemyStatus) messages.push(enemyStatus.message);
+
+    // buff/debuff 衰減
+    const playerDecay = decayStatStages(this.playerMonster);
+    if (playerDecay) messages.push(playerDecay);
+    const enemyDecay = decayStatStages(this.enemyMonster);
+    if (enemyDecay) messages.push(enemyDecay);
+
+    if (messages.length === 0) {
+      onDone();
+      return;
+    }
+
+    // 依序顯示訊息
+    this.updateInfoPanels();
+    const showNext = (idx: number) => {
+      if (idx >= messages.length) {
+        // 檢查狀態傷害是否擊倒
+        if (this.playerMonster.hp <= 0) { this.onPlayerMonsterDefeated(); return; }
+        if (this.enemyMonster.hp <= 0) { this.onEnemyDefeated(); return; }
+        onDone();
+        return;
+      }
+      this.showMessage(messages[idx], () => {
+        this.updateInfoPanels();
+        showNext(idx + 1);
+      });
+    };
+    showNext(0);
   }
 
   private onEnemyDefeated(): void {
@@ -1100,7 +1151,7 @@ export class BattleScene extends Phaser.Scene {
             });
           } else {
             this.showMessage('捕獲失敗！靈獸掙脫了！', () => {
-              const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+              const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
               const enemySkill = this.enemyMonster.skills[enemySkillIndex];
               enemySkill.currentPp--;
               this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
@@ -1124,7 +1175,7 @@ export class BattleScene extends Phaser.Scene {
         this.showMessage('成功逃跑了！', () => this.endBattle());
       } else {
         this.showMessage('逃跑失敗！', () => {
-          const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+          const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
           const enemySkill = this.enemyMonster.skills[enemySkillIndex];
           enemySkill.currentPp--;
           this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
@@ -1173,7 +1224,7 @@ export class BattleScene extends Phaser.Scene {
             if (this.isPlayerCombatant) {
               this.executeEnemyCombatantTurn();
             } else {
-              const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+              const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
               const enemySkill = this.enemyMonster.skills[enemySkillIndex];
               enemySkill.currentPp--;
               this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
@@ -1430,7 +1481,7 @@ export class BattleScene extends Phaser.Scene {
     const targetHuman = this.playerCombat && this.playerCombat.hp > 0 && Math.random() < 0.4;
 
     if (targetHuman && this.playerCombat) {
-      const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+      const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
       const enemySkill = this.enemyMonster.skills[enemySkillIndex];
       enemySkill.currentPp--;
 
@@ -1460,7 +1511,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // 敵寵打玩家寵
-    const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+    const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
     const enemySkill = this.enemyMonster.skills[enemySkillIndex];
     enemySkill.currentPp--;
     this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
@@ -1554,7 +1605,7 @@ export class BattleScene extends Phaser.Scene {
           this.clearButtons();
           this.showMessage(`你變身為 ${template.name}！(HP ${Math.floor(hpRatio * 100)}%)`, () => {
             // 變身消耗回合，敵方行動
-            const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+            const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
             const enemySkill = this.enemyMonster.skills[enemySkillIndex];
             enemySkill.currentPp--;
             this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
@@ -1606,7 +1657,7 @@ export class BattleScene extends Phaser.Scene {
           this.updateInfoPanels();
           this.clearButtons();
           this.showMessage(`解除變身！派出 ${m.nickname}！`, () => {
-            const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+            const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
             const enemySkill = this.enemyMonster.skills[enemySkillIndex];
             enemySkill.currentPp--;
             this.doTurnAction(this.enemyMonster, this.playerMonster, enemySkill.skill, false, () => {
@@ -1767,7 +1818,7 @@ export class BattleScene extends Phaser.Scene {
       });
     } else {
       // 敵方靈寵攻擊玩家人類
-      const enemySkillIndex = enemyChooseAction(this.enemyMonster);
+      const enemySkillIndex = enemyChooseAction(this.enemyMonster, this.playerMonster);
       const enemySkill = this.enemyMonster.skills[enemySkillIndex];
       enemySkill.currentPp--;
 

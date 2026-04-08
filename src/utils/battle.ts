@@ -67,6 +67,11 @@ export function calculateDamage(attacker: MonsterInstance, defender: MonsterInst
         }
         break;
       }
+      case 'burn':
+      case 'poison': {
+        statMsg = applyStatus(defender, skill.effect.type);
+        break;
+      }
     }
   }
 
@@ -165,12 +170,39 @@ export function applyExp(monster: MonsterInstance, exp: number): { leveled: bool
   return { leveled: false, newLevel: monster.level, newSkills: [], realmUp: false };
 }
 
-export function enemyChooseAction(monster: MonsterInstance): number {
+export function enemyChooseAction(monster: MonsterInstance, defender?: MonsterInstance): number {
   const available = monster.skills
     .map((s, i) => ({ ...s, index: i }))
     .filter(s => s.currentPp > 0);
   if (available.length === 0) return 0;
 
+  const hpRatio = monster.hp / monster.maxHp;
+
+  // 低血量時優先使用回復/吸血技能
+  if (hpRatio < 0.3) {
+    const healSkill = available.find(s =>
+      s.skill.effect?.type === 'heal' || s.skill.effect?.type === 'drain');
+    if (healSkill && Math.random() < 0.7) return healSkill.index;
+  }
+
+  // 有 buff 技且尚未 buff 過，考慮使用
+  if (monster.atkStage === 0 && monster.defStage === 0 && monster.spdStage === 0) {
+    const buffSkill = available.find(s => s.skill.effect?.type === 'statUp');
+    if (buffSkill && Math.random() < 0.3) return buffSkill.index;
+  }
+
+  // 考慮屬性相剋：優先選效果拔群的技能
+  if (defender) {
+    const defTemplate = getTemplate(defender.templateId);
+    const effective = available.filter(s =>
+      s.skill.power > 0 && getTypeMultiplier(s.skill.element, defTemplate.element) > 1);
+    if (effective.length > 0 && Math.random() < 0.6) {
+      const sorted = [...effective].sort((a, b) => b.skill.power - a.skill.power);
+      return sorted[0].index;
+    }
+  }
+
+  // 預設：70% 最高威力，30% 隨機
   if (Math.random() < 0.7) {
     const sorted = [...available].sort((a, b) => b.skill.power - a.skill.power);
     return sorted[0].index;
@@ -183,6 +215,9 @@ export function healMonster(monster: MonsterInstance): void {
   monster.atkStage = 0;
   monster.defStage = 0;
   monster.spdStage = 0;
+  monster.statusCondition = null;
+  monster.statusTurns = 0;
+  monster.buffTurnCount = 0;
   for (const s of monster.skills) {
     s.currentPp = s.skill.pp;
   }
@@ -192,6 +227,60 @@ export function resetStatStages(monster: MonsterInstance): void {
   monster.atkStage = 0;
   monster.defStage = 0;
   monster.spdStage = 0;
+}
+
+/** 清除狀態異常 */
+export function clearStatus(monster: MonsterInstance): void {
+  monster.statusCondition = null;
+  monster.statusTurns = 0;
+}
+
+/** 施加狀態異常（不覆蓋已有狀態） */
+export function applyStatus(monster: MonsterInstance, status: 'burn' | 'poison'): string {
+  if (monster.statusCondition) {
+    const name = monster.statusCondition === 'burn' ? '灼燒' : '中毒';
+    return `${monster.nickname} 已經處於${name}狀態！`;
+  }
+  monster.statusCondition = status;
+  monster.statusTurns = status === 'burn' ? 3 : 5;
+  const statusName = status === 'burn' ? '灼燒' : '中毒';
+  return `${monster.nickname} 陷入了${statusName}狀態！`;
+}
+
+/** 回合結束時處理狀態異常傷害，回傳傷害量與訊息 */
+export function processStatusDamage(monster: MonsterInstance): { damage: number; message: string } | null {
+  if (!monster.statusCondition || !monster.statusTurns || monster.statusTurns <= 0) return null;
+
+  const fraction = monster.statusCondition === 'burn' ? 16 : 8;
+  const damage = Math.max(1, Math.floor(monster.maxHp / fraction));
+  monster.hp = Math.max(0, monster.hp - damage);
+  monster.statusTurns--;
+
+  const statusName = monster.statusCondition === 'burn' ? '灼燒' : '中毒';
+  const message = `${monster.nickname} 受到${statusName}傷害，損失 ${damage} HP！`;
+
+  if (monster.statusTurns <= 0) {
+    monster.statusCondition = null;
+  }
+
+  return { damage, message };
+}
+
+/** buff/debuff 衰減：每4回合所有stage向0靠近1格 */
+export function decayStatStages(monster: MonsterInstance): string {
+  monster.buffTurnCount = (monster.buffTurnCount || 0) + 1;
+  if (monster.buffTurnCount < 4) return '';
+  monster.buffTurnCount = 0;
+
+  let decayed = false;
+  if (monster.atkStage > 0) { monster.atkStage--; decayed = true; }
+  else if (monster.atkStage < 0) { monster.atkStage++; decayed = true; }
+  if (monster.defStage > 0) { monster.defStage--; decayed = true; }
+  else if (monster.defStage < 0) { monster.defStage++; decayed = true; }
+  if (monster.spdStage > 0) { monster.spdStage--; decayed = true; }
+  else if (monster.spdStage < 0) { monster.spdStage++; decayed = true; }
+
+  return decayed ? `${monster.nickname} 的能力變化逐漸消退...` : '';
 }
 
 // ═══════════════════════════════════════

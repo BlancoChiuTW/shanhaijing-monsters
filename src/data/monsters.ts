@@ -9,7 +9,9 @@ export type SkillEffect =
   | { type: 'statUp'; stat: 'atk' | 'def' | 'spd'; stages: number }
   | { type: 'statDown'; stat: 'atk' | 'def' | 'spd'; stages: number }
   | { type: 'priority' }
-  | { type: 'block' };
+  | { type: 'block' }
+  | { type: 'burn' }   // 灼燒：每回合損失 1/16 maxHP，持續3回合
+  | { type: 'poison' }; // 中毒：每回合損失 1/8 maxHP，持續5回合
 
 export interface Skill {
   name: string;
@@ -61,6 +63,11 @@ export interface MonsterInstance {
   fusionBaseStats?: { hp: number; atk: number; def: number; spd: number };
   // 御獸神訣本命靈寵
   isSoulBound?: boolean;
+  // 狀態異常
+  statusCondition?: 'burn' | 'poison' | null;
+  statusTurns?: number;
+  // buff/debuff 回合衰減計數
+  buffTurnCount?: number;
 }
 
 // ═══════════════════════════════════════
@@ -220,11 +227,11 @@ export const MONSTERS: MonsterTemplate[] = [
     baseHp: 78, baseAtk: 100, baseDef: 65, baseSpd: 90,
     catchRate: 120, color: 0x8888ff,
     skills: [
-      { learnLevel: 1, skill: { name: '撲擊', element: '土', power: 40, accuracy: 100, pp: 35, description: '猛撲向敵人' } },
-      { learnLevel: 1, skill: { name: '金爪', element: '金', power: 55, accuracy: 95, pp: 25, description: '以銳利金刃撕裂' } },
-      { learnLevel: 8, skill: { name: '虎嘯', element: '金', power: 80, accuracy: 100, pp: 15, description: '震耳虎嘯產生衝擊波' } },
-      { learnLevel: 15, skill: { name: '蓄銳', element: '金', power: 0, accuracy: 100, pp: 10, description: '凝聚金氣大幅提升攻擊', effect: { type: 'statUp', stat: 'atk', stages: 2 } } },
-      { learnLevel: 22, skill: { name: '寒冰牙', element: '水', power: 80, accuracy: 90, pp: 10, description: '以極寒之氣凍裂敵人' } },
+      { learnLevel: 1, skill: { name: '撲擊', element: '土', power: 40, accuracy: 100, pp: 20, description: '猛撲向敵人' } },
+      { learnLevel: 1, skill: { name: '金爪', element: '金', power: 55, accuracy: 95, pp: 18, description: '以銳利金刃撕裂' } },
+      { learnLevel: 8, skill: { name: '虎嘯', element: '金', power: 80, accuracy: 100, pp: 12, description: '震耳虎嘯產生衝擊波' } },
+      { learnLevel: 15, skill: { name: '蓄銳', element: '金', power: 0, accuracy: 100, pp: 8, description: '凝聚金氣大幅提升攻擊', effect: { type: 'statUp', stat: 'atk', stages: 2 } } },
+      { learnLevel: 22, skill: { name: '寒冰牙', element: '水', power: 80, accuracy: 90, pp: 8, description: '以極寒之氣凍裂敵人' } },
       { learnLevel: 30, skill: { name: '天翔突襲', element: '金', power: 80, accuracy: 100, pp: 5, description: '極速俯衝先制攻擊', effect: { type: 'priority' } } },
       { learnLevel: 36, skill: { name: '金鋒暴', element: '金', power: 130, accuracy: 90, pp: 5, description: '化神境金氣猛烈突進', effect: { type: 'recoil', percent: 25 } } },
       { learnLevel: 40, skill: { name: '神獸之怒', element: '金', power: 160, accuracy: 80, pp: 3, description: '渡劫境靈力全開撕裂防禦', effect: { type: 'statDown', stat: 'def', stages: 1 } } },
@@ -240,12 +247,12 @@ export const MONSTERS: MonsterTemplate[] = [
     baseHp: 125, baseAtk: 70, baseDef: 90, baseSpd: 45,
     catchRate: 60, color: 0x4488cc,
     skills: [
-      { learnLevel: 1, skill: { name: '潮汐', element: '水', power: 40, accuracy: 100, pp: 30, description: '掀起小型潮汐' } },
-      { learnLevel: 1, skill: { name: '吞噬', element: '水', power: 65, accuracy: 95, pp: 20, description: '張開巨口吞噬一切' } },
-      { learnLevel: 10, skill: { name: '巨浪', element: '水', power: 90, accuracy: 100, pp: 15, description: '掀起滔天巨浪沖刷' } },
-      { learnLevel: 18, skill: { name: '化鵬', element: '金', power: 85, accuracy: 90, pp: 10, description: '化為大鵬振翅攻擊' } },
+      { learnLevel: 1, skill: { name: '潮汐', element: '水', power: 40, accuracy: 100, pp: 20, description: '掀起小型潮汐' } },
+      { learnLevel: 1, skill: { name: '吞噬', element: '水', power: 65, accuracy: 95, pp: 15, description: '張開巨口吞噬一切' } },
+      { learnLevel: 10, skill: { name: '巨浪', element: '水', power: 90, accuracy: 100, pp: 12, description: '掀起滔天巨浪沖刷' } },
+      { learnLevel: 18, skill: { name: '化鵬', element: '金', power: 85, accuracy: 90, pp: 8, description: '化為大鵬振翅攻擊' } },
       { learnLevel: 25, skill: { name: '生息', element: '水', power: 0, accuracy: 100, pp: 5, description: '深海中緩緩恢復生命', effect: { type: 'heal', percent: 40 } } },
-      { learnLevel: 32, skill: { name: '藤蔓纏繞', element: '木', power: 80, accuracy: 90, pp: 10, description: '海藻纏繞拖慢敵人', effect: { type: 'statDown', stat: 'spd', stages: 1 } } },
+      { learnLevel: 32, skill: { name: '藤蔓纏繞', element: '木', power: 80, accuracy: 90, pp: 8, description: '海藻纏繞拖慢敵人', effect: { type: 'statDown', stat: 'spd', stages: 1 } } },
       { learnLevel: 36, skill: { name: '北冥吞天', element: '水', power: 140, accuracy: 85, pp: 5, description: '化神境吞天之力', effect: { type: 'drain', percent: 33 } } },
       { learnLevel: 40, skill: { name: '逍遙遊', element: '水', power: 150, accuracy: 80, pp: 3, description: '超脫萬物的究極之力', effect: { type: 'drain', percent: 25 } } },
     ],
@@ -260,12 +267,12 @@ export const MONSTERS: MonsterTemplate[] = [
     baseHp: 90, baseAtk: 115, baseDef: 70, baseSpd: 65,
     catchRate: 45, color: 0xff4422,
     skills: [
-      { learnLevel: 1, skill: { name: '燭火', element: '火', power: 40, accuracy: 100, pp: 30, description: '吐出不滅之火' } },
-      { learnLevel: 1, skill: { name: '蛇纏', element: '土', power: 55, accuracy: 95, pp: 25, description: '以巨大蛇身纏繞壓制' } },
-      { learnLevel: 10, skill: { name: '烈焰', element: '火', power: 80, accuracy: 100, pp: 15, description: '噴出高溫烈焰' } },
-      { learnLevel: 18, skill: { name: '長夜', element: '木', power: 75, accuracy: 90, pp: 10, description: '閉眼降下永夜削弱敵人', effect: { type: 'statDown', stat: 'spd', stages: 1 } } },
-      { learnLevel: 25, skill: { name: '天照', element: '火', power: 110, accuracy: 85, pp: 5, description: '睜眼釋放烈日之光' } },
-      { learnLevel: 33, skill: { name: '地裂', element: '土', power: 100, accuracy: 90, pp: 10, description: '猛力撕裂大地' } },
+      { learnLevel: 1, skill: { name: '燭火', element: '火', power: 40, accuracy: 100, pp: 20, description: '吐出不滅之火' } },
+      { learnLevel: 1, skill: { name: '蛇纏', element: '土', power: 55, accuracy: 95, pp: 18, description: '以巨大蛇身纏繞壓制' } },
+      { learnLevel: 10, skill: { name: '烈焰', element: '火', power: 80, accuracy: 100, pp: 12, description: '噴出高溫烈焰', effect: { type: 'burn' } } },
+      { learnLevel: 18, skill: { name: '長夜', element: '木', power: 75, accuracy: 90, pp: 8, description: '閉眼降下永夜削弱敵人', effect: { type: 'statDown', stat: 'spd', stages: 1 } } },
+      { learnLevel: 25, skill: { name: '天照', element: '火', power: 110, accuracy: 85, pp: 5, description: '睜眼釋放烈日之光', effect: { type: 'burn' } } },
+      { learnLevel: 33, skill: { name: '地裂', element: '土', power: 100, accuracy: 90, pp: 8, description: '猛力撕裂大地' } },
       { learnLevel: 36, skill: { name: '混沌之火', element: '火', power: 140, accuracy: 85, pp: 5, description: '化神境混沌原始之火', effect: { type: 'recoil', percent: 33 } } },
       { learnLevel: 40, skill: { name: '日月滅世', element: '火', power: 170, accuracy: 75, pp: 3, description: '日月同滅的終極禁術', effect: { type: 'statDown', stat: 'def', stages: 1 } } },
     ],
@@ -280,10 +287,10 @@ export const MONSTERS: MonsterTemplate[] = [
     baseHp: 90, baseAtk: 60, baseDef: 80, baseSpd: 85,
     catchRate: 45, color: 0xffffcc,
     skills: [
-      { learnLevel: 1, skill: { name: '聖光', element: '金', power: 45, accuracy: 100, pp: 30, description: '釋放淨化金光' } },
-      { learnLevel: 1, skill: { name: '洞悉', element: '木', power: 50, accuracy: 100, pp: 20, description: '看破弱點降低防禦', effect: { type: 'statDown', stat: 'def', stages: 1 } } },
-      { learnLevel: 8, skill: { name: '瑞氣', element: '金', power: 0, accuracy: 100, pp: 10, description: '散發祥瑞之氣恢復體力', effect: { type: 'heal', percent: 50 } } },
-      { learnLevel: 15, skill: { name: '靈泉術', element: '水', power: 65, accuracy: 95, pp: 15, description: '召喚靈泉沖刷敵人' } },
+      { learnLevel: 1, skill: { name: '聖光', element: '金', power: 45, accuracy: 100, pp: 20, description: '釋放淨化金光' } },
+      { learnLevel: 1, skill: { name: '洞悉', element: '木', power: 50, accuracy: 100, pp: 15, description: '看破弱點降低防禦', effect: { type: 'statDown', stat: 'def', stages: 1 } } },
+      { learnLevel: 8, skill: { name: '瑞氣', element: '金', power: 0, accuracy: 100, pp: 8, description: '散發祥瑞之氣恢復體力', effect: { type: 'heal', percent: 50 } } },
+      { learnLevel: 15, skill: { name: '靈泉術', element: '水', power: 65, accuracy: 95, pp: 12, description: '召喚靈泉沖刷敵人' } },
       { learnLevel: 22, skill: { name: '祥瑞結界', element: '金', power: 0, accuracy: 100, pp: 5, description: '張開結界大幅提升防禦', effect: { type: 'statUp', stat: 'def', stages: 2 } } },
       { learnLevel: 30, skill: { name: '天罰', element: '金', power: 110, accuracy: 85, pp: 5, description: '降下天罰審判一切' } },
       { learnLevel: 36, skill: { name: '萬物通曉', element: '金', power: 0, accuracy: 100, pp: 3, description: '化神境通曉一切恢復生命', effect: { type: 'heal', percent: 75 } } },
@@ -300,14 +307,14 @@ export const MONSTERS: MonsterTemplate[] = [
     baseHp: 70, baseAtk: 85, baseDef: 55, baseSpd: 115,
     catchRate: 80, color: 0xffaa66,
     skills: [
-      { learnLevel: 1, skill: { name: '狐火', element: '火', power: 40, accuracy: 100, pp: 30, description: '放出蠱惑的鬼火' } },
-      { learnLevel: 1, skill: { name: '幻術', element: '木', power: 50, accuracy: 95, pp: 25, description: '施展迷幻之術擾亂心智' } },
-      { learnLevel: 8, skill: { name: '魅惑', element: '木', power: 0, accuracy: 90, pp: 15, description: '魅惑敵人大幅降低攻擊', effect: { type: 'statDown', stat: 'atk', stages: 2 } } },
-      { learnLevel: 15, skill: { name: '九尾鞭', element: '木', power: 80, accuracy: 95, pp: 15, description: '九尾齊發猛擊敵人' } },
-      { learnLevel: 22, skill: { name: '狐影分身', element: '木', power: 0, accuracy: 100, pp: 10, description: '分身幻影大幅提升速度', effect: { type: 'statUp', stat: 'spd', stages: 2 } } },
+      { learnLevel: 1, skill: { name: '狐火', element: '火', power: 40, accuracy: 100, pp: 20, description: '放出蠱惑的鬼火' } },
+      { learnLevel: 1, skill: { name: '幻術', element: '木', power: 50, accuracy: 95, pp: 18, description: '施展迷幻之術擾亂心智' } },
+      { learnLevel: 8, skill: { name: '魅惑', element: '木', power: 0, accuracy: 90, pp: 10, description: '魅惑敵人大幅降低攻擊', effect: { type: 'statDown', stat: 'atk', stages: 2 } } },
+      { learnLevel: 15, skill: { name: '九尾鞭', element: '木', power: 80, accuracy: 95, pp: 12, description: '九尾齊發猛擊敵人' } },
+      { learnLevel: 22, skill: { name: '狐影分身', element: '木', power: 0, accuracy: 100, pp: 8, description: '分身幻影大幅提升速度', effect: { type: 'statUp', stat: 'spd', stages: 2 } } },
       { learnLevel: 30, skill: { name: '妖狐亂舞', element: '木', power: 100, accuracy: 90, pp: 5, description: '妖力全開吸取生命力', effect: { type: 'drain', percent: 50 } } },
       { learnLevel: 36, skill: { name: '天狐化仙', element: '木', power: 130, accuracy: 90, pp: 5, description: '化神境天狐幻術', effect: { type: 'drain', percent: 33 } } },
-      { learnLevel: 40, skill: { name: '業火焚身', element: '火', power: 110, accuracy: 85, pp: 3, description: '渡劫境妖火焚燒一切', effect: { type: 'statDown', stat: 'def', stages: 1 } } },
+      { learnLevel: 40, skill: { name: '業火焚身', element: '火', power: 110, accuracy: 85, pp: 3, description: '渡劫境妖火焚燒一切', effect: { type: 'burn' } } },
     ],
   },
 
@@ -320,11 +327,11 @@ export const MONSTERS: MonsterTemplate[] = [
     baseHp: 130, baseAtk: 85, baseDef: 90, baseSpd: 25,
     catchRate: 50, color: 0x886633,
     skills: [
-      { learnLevel: 1, skill: { name: '鐵爪', element: '金', power: 45, accuracy: 100, pp: 30, description: '揮動鐵爪猛擊' } },
-      { learnLevel: 1, skill: { name: '貪噬', element: '土', power: 60, accuracy: 95, pp: 25, description: '貪婪地撕咬敵人' } },
-      { learnLevel: 10, skill: { name: '地裂', element: '土', power: 85, accuracy: 90, pp: 15, description: '撕裂大地猛擊' } },
-      { learnLevel: 18, skill: { name: '鐵胃', element: '土', power: 0, accuracy: 100, pp: 10, description: '消化吸收恢復體力', effect: { type: 'heal', percent: 50 } } },
-      { learnLevel: 25, skill: { name: '貪食吸收', element: '土', power: 80, accuracy: 100, pp: 10, description: '吞食敵人吸取生命力', effect: { type: 'drain', percent: 50 } } },
+      { learnLevel: 1, skill: { name: '鐵爪', element: '金', power: 45, accuracy: 100, pp: 20, description: '揮動鐵爪猛擊' } },
+      { learnLevel: 1, skill: { name: '貪噬', element: '土', power: 60, accuracy: 95, pp: 18, description: '貪婪地撕咬敵人' } },
+      { learnLevel: 10, skill: { name: '地裂', element: '土', power: 85, accuracy: 90, pp: 12, description: '撕裂大地猛擊' } },
+      { learnLevel: 18, skill: { name: '鐵胃', element: '土', power: 0, accuracy: 100, pp: 8, description: '消化吸收恢復體力', effect: { type: 'heal', percent: 50 } } },
+      { learnLevel: 25, skill: { name: '貪食吸收', element: '土', power: 80, accuracy: 100, pp: 8, description: '吞食敵人吸取生命力', effect: { type: 'drain', percent: 50 } } },
       { learnLevel: 32, skill: { name: '金剛壁', element: '土', power: 0, accuracy: 100, pp: 5, description: '堅硬外殼大幅提升防禦', effect: { type: 'statUp', stat: 'def', stages: 2 } } },
       { learnLevel: 36, skill: { name: '萬物皆食', element: '土', power: 130, accuracy: 90, pp: 5, description: '化神境吞噬萬物之力', effect: { type: 'drain', percent: 50 } } },
       { learnLevel: 40, skill: { name: '混沌吞噬', element: '土', power: 160, accuracy: 80, pp: 3, description: '渡劫境混沌吞天滅地', effect: { type: 'drain', percent: 33 } } },
@@ -340,14 +347,14 @@ export const MONSTERS: MonsterTemplate[] = [
     baseHp: 65, baseAtk: 100, baseDef: 50, baseSpd: 105,
     catchRate: 100, color: 0xff6633,
     skills: [
-      { learnLevel: 1, skill: { name: '火羽', element: '火', power: 40, accuracy: 100, pp: 30, description: '射出燃燒的羽毛' } },
-      { learnLevel: 1, skill: { name: '獨足踏', element: '土', power: 50, accuracy: 95, pp: 25, description: '以獨足猛力踏擊' } },
-      { learnLevel: 8, skill: { name: '烈焰衝擊', element: '火', power: 75, accuracy: 100, pp: 15, description: '全身燃燒衝向敵人' } },
-      { learnLevel: 15, skill: { name: '災火', element: '火', power: 90, accuracy: 90, pp: 10, description: '引發災級烈焰' } },
-      { learnLevel: 22, skill: { name: '疾風步', element: '金', power: 0, accuracy: 100, pp: 10, description: '極速移動大幅提升速度', effect: { type: 'statUp', stat: 'spd', stages: 2 } } },
+      { learnLevel: 1, skill: { name: '火羽', element: '火', power: 40, accuracy: 100, pp: 20, description: '射出燃燒的羽毛' } },
+      { learnLevel: 1, skill: { name: '獨足踏', element: '土', power: 50, accuracy: 95, pp: 18, description: '以獨足猛力踏擊' } },
+      { learnLevel: 8, skill: { name: '烈焰衝擊', element: '火', power: 75, accuracy: 100, pp: 12, description: '全身燃燒衝向敵人' } },
+      { learnLevel: 15, skill: { name: '災火', element: '火', power: 90, accuracy: 90, pp: 8, description: '引發災級烈焰', effect: { type: 'burn' } } },
+      { learnLevel: 22, skill: { name: '疾風步', element: '金', power: 0, accuracy: 100, pp: 8, description: '極速移動大幅提升速度', effect: { type: 'statUp', stat: 'spd', stages: 2 } } },
       { learnLevel: 30, skill: { name: '焚天', element: '火', power: 120, accuracy: 85, pp: 5, description: '將天空燃燒殆盡', effect: { type: 'recoil', percent: 25 } } },
       { learnLevel: 36, skill: { name: '鳳凰涅槃', element: '火', power: 140, accuracy: 90, pp: 5, description: '化神境浴火重生之焰' } },
-      { learnLevel: 40, skill: { name: '焚世之翼', element: '火', power: 160, accuracy: 80, pp: 3, description: '渡劫境烈焰灼燒拖慢敵人', effect: { type: 'statDown', stat: 'spd', stages: 1 } } },
+      { learnLevel: 40, skill: { name: '焚世之翼', element: '火', power: 160, accuracy: 80, pp: 3, description: '渡劫境烈焰灼燒拖慢敵人', effect: { type: 'burn' } } },
     ],
   },
 
@@ -360,11 +367,11 @@ export const MONSTERS: MonsterTemplate[] = [
     baseHp: 130, baseAtk: 55, baseDef: 115, baseSpd: 30,
     catchRate: 30, color: 0x224466,
     skills: [
-      { learnLevel: 1, skill: { name: '玄冰', element: '水', power: 45, accuracy: 100, pp: 30, description: '釋放極寒冰晶' } },
-      { learnLevel: 1, skill: { name: '蛇咬', element: '木', power: 55, accuracy: 95, pp: 25, description: '蛇首猛咬注入毒液' } },
-      { learnLevel: 10, skill: { name: '龜甲', element: '水', power: 0, accuracy: 100, pp: 10, description: '縮入龜甲大幅提升防禦', effect: { type: 'statUp', stat: 'def', stages: 2 } } },
-      { learnLevel: 18, skill: { name: '寒冰之壁', element: '水', power: 80, accuracy: 95, pp: 15, description: '築起冰牆砸向敵人' } },
-      { learnLevel: 25, skill: { name: '蛇毒注入', element: '木', power: 70, accuracy: 100, pp: 15, description: '注入腐蝕毒液削弱攻擊', effect: { type: 'statDown', stat: 'atk', stages: 1 } } },
+      { learnLevel: 1, skill: { name: '玄冰', element: '水', power: 45, accuracy: 100, pp: 20, description: '釋放極寒冰晶' } },
+      { learnLevel: 1, skill: { name: '蛇咬', element: '木', power: 55, accuracy: 95, pp: 18, description: '蛇首猛咬注入毒液', effect: { type: 'poison' } } },
+      { learnLevel: 10, skill: { name: '龜甲', element: '水', power: 0, accuracy: 100, pp: 8, description: '縮入龜甲大幅提升防禦', effect: { type: 'statUp', stat: 'def', stages: 2 } } },
+      { learnLevel: 18, skill: { name: '寒冰之壁', element: '水', power: 80, accuracy: 95, pp: 12, description: '築起冰牆砸向敵人' } },
+      { learnLevel: 25, skill: { name: '蛇毒注入', element: '木', power: 70, accuracy: 100, pp: 10, description: '注入腐蝕毒液削弱攻擊', effect: { type: 'poison' } } },
       { learnLevel: 32, skill: { name: '北方鎮守', element: '水', power: 110, accuracy: 85, pp: 5, description: '召喚北方之力重擊' } },
       { learnLevel: 36, skill: { name: '玄天護甲', element: '水', power: 0, accuracy: 100, pp: 3, description: '化神境龜甲極限防禦', effect: { type: 'statUp', stat: 'def', stages: 3 } } },
       { learnLevel: 40, skill: { name: '四象鎮壓', element: '水', power: 140, accuracy: 85, pp: 3, description: '渡劫境四象之力鎮壓萬物', effect: { type: 'statDown', stat: 'atk', stages: 2 } } },
@@ -380,11 +387,11 @@ export const MONSTERS: MonsterTemplate[] = [
     baseHp: 65, baseAtk: 80, baseDef: 55, baseSpd: 120,
     catchRate: 110, color: 0x99aacc,
     skills: [
-      { learnLevel: 1, skill: { name: '鷹擊', element: '金', power: 45, accuracy: 100, pp: 30, description: '俯衝啄擊' } },
-      { learnLevel: 1, skill: { name: '嬰啼', element: '木', power: 0, accuracy: 95, pp: 20, description: '嬰兒般哭聲降低攻擊', effect: { type: 'statDown', stat: 'atk', stages: 1 } } },
-      { learnLevel: 8, skill: { name: '蠍尾針', element: '木', power: 65, accuracy: 100, pp: 20, description: '以蠍尾注入劇毒' } },
-      { learnLevel: 15, skill: { name: '蓄力', element: '木', power: 0, accuracy: 100, pp: 10, description: '凝聚妖力大幅提升攻擊', effect: { type: 'statUp', stat: 'atk', stages: 2 } } },
-      { learnLevel: 22, skill: { name: '劇毒飛針', element: '木', power: 85, accuracy: 90, pp: 10, description: '射出劇毒飛針拖慢敵人', effect: { type: 'statDown', stat: 'spd', stages: 1 } } },
+      { learnLevel: 1, skill: { name: '鷹擊', element: '金', power: 45, accuracy: 100, pp: 20, description: '俯衝啄擊' } },
+      { learnLevel: 1, skill: { name: '嬰啼', element: '木', power: 0, accuracy: 95, pp: 15, description: '嬰兒般哭聲降低攻擊', effect: { type: 'statDown', stat: 'atk', stages: 1 } } },
+      { learnLevel: 8, skill: { name: '蠍尾針', element: '木', power: 65, accuracy: 100, pp: 15, description: '以蠍尾注入劇毒', effect: { type: 'poison' } } },
+      { learnLevel: 15, skill: { name: '蓄力', element: '木', power: 0, accuracy: 100, pp: 8, description: '凝聚妖力大幅提升攻擊', effect: { type: 'statUp', stat: 'atk', stages: 2 } } },
+      { learnLevel: 22, skill: { name: '劇毒飛針', element: '木', power: 85, accuracy: 90, pp: 8, description: '射出劇毒飛針拖慢敵人', effect: { type: 'poison' } } },
       { learnLevel: 30, skill: { name: '業火突襲', element: '火', power: 90, accuracy: 90, pp: 5, description: '烈焰先制突襲', effect: { type: 'priority' } } },
       { learnLevel: 36, skill: { name: '魔音穿腦', element: '木', power: 110, accuracy: 90, pp: 5, description: '化神境魔音大幅削弱', effect: { type: 'statDown', stat: 'atk', stages: 2 } } },
       { learnLevel: 40, skill: { name: '天魔亂舞', element: '木', power: 140, accuracy: 85, pp: 3, description: '渡劫境天魔吸取精元', effect: { type: 'drain', percent: 33 } } },
@@ -400,12 +407,12 @@ export const MONSTERS: MonsterTemplate[] = [
     baseHp: 95, baseAtk: 110, baseDef: 65, baseSpd: 55,
     catchRate: 35, color: 0x66aa44,
     skills: [
-      { learnLevel: 1, skill: { name: '腐蝕', element: '土', power: 45, accuracy: 100, pp: 30, description: '噴出腐蝕性毒液' } },
-      { learnLevel: 1, skill: { name: '沼澤', element: '水', power: 55, accuracy: 95, pp: 25, description: '將地面化為毒沼' } },
-      { learnLevel: 10, skill: { name: '九首噬', element: '土', power: 80, accuracy: 90, pp: 15, description: '九個蛇首同時撲咬' } },
-      { learnLevel: 18, skill: { name: '毒沼地獄', element: '土', power: 75, accuracy: 100, pp: 15, description: '毒沼纏身削弱速度', effect: { type: 'statDown', stat: 'spd', stages: 1 } } },
+      { learnLevel: 1, skill: { name: '腐蝕', element: '土', power: 45, accuracy: 100, pp: 20, description: '噴出腐蝕性毒液', effect: { type: 'poison' } } },
+      { learnLevel: 1, skill: { name: '沼澤', element: '水', power: 55, accuracy: 95, pp: 18, description: '將地面化為毒沼' } },
+      { learnLevel: 10, skill: { name: '九首噬', element: '土', power: 80, accuracy: 90, pp: 12, description: '九個蛇首同時撲咬' } },
+      { learnLevel: 18, skill: { name: '毒沼地獄', element: '土', power: 75, accuracy: 100, pp: 10, description: '毒沼纏身削弱速度', effect: { type: 'poison' } } },
       { learnLevel: 25, skill: { name: '金鱗護體', element: '金', power: 0, accuracy: 100, pp: 5, description: '金鱗硬化大幅提升防禦', effect: { type: 'statUp', stat: 'def', stages: 2 } } },
-      { learnLevel: 33, skill: { name: '毒霧', element: '木', power: 110, accuracy: 85, pp: 5, description: '覆蓋一切的劇毒之霧' } },
+      { learnLevel: 33, skill: { name: '毒霧', element: '木', power: 110, accuracy: 85, pp: 5, description: '覆蓋一切的劇毒之霧', effect: { type: 'poison' } } },
       { learnLevel: 36, skill: { name: '九毒歸元', element: '土', power: 140, accuracy: 85, pp: 5, description: '化神境九種劇毒合一' } },
       { learnLevel: 40, skill: { name: '滅世毒霧', element: '木', power: 150, accuracy: 80, pp: 3, description: '渡劫境滅世劇毒之霧', effect: { type: 'statDown', stat: 'def', stages: 2 } } },
     ],
