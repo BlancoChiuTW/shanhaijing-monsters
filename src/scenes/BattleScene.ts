@@ -181,9 +181,9 @@ export class BattleScene extends Phaser.Scene {
     this.playerHpBar = this.add.rectangle(width * 0.75 - 80, height * 0.62 + 14, 160, 8, 0x44cc44).setOrigin(0, 0.5);
 
     // Message box
-    this.add.rectangle(width / 2, height - 50, width - 20, 70, 0x000000, 0.85).setStrokeStyle(1, 0xffcc44);
-    this.messageText = this.add.text(20, height - 78, '', {
-      fontSize: '13px', color: '#ffffff', wordWrap: { width: width - 50 },
+    this.add.rectangle(width / 2, height - 55, width - 20, 90, 0x000000, 0.85).setStrokeStyle(1, 0xffcc44);
+    this.messageText = this.add.text(20, height - 94, '', {
+      fontSize: '12px', color: '#ffffff', wordWrap: { width: width - 50 },
     });
 
     // 煉天大法：額外顯示人類實體
@@ -343,12 +343,12 @@ export class BattleScene extends Phaser.Scene {
 
     actions.forEach((act, i) => {
       const x = width / 2 - 120 + (i % 2) * 160;
-      const y = height - 65 + Math.floor(i / 2) * 28;
-      const icon = this.add.image(x, y + 8, act.icon);
-      icon.setDisplaySize(16, 16).setOrigin(0, 0.5);
+      const y = height - 82 + Math.floor(i / 2) * 26;
+      const icon = this.add.image(x, y + 7, act.icon);
+      icon.setDisplaySize(14, 14).setOrigin(0, 0.5);
       this.actionButtons.push(icon);
-      const btn = this.add.text(x + 20, y, act.text, {
-        fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
+      const btn = this.add.text(x + 18, y, act.text, {
+        fontSize: '13px', color: '#ffffff', fontStyle: 'bold',
       }).setInteractive({ useHandCursor: true });
       btn.on('pointerover', () => { btn.setColor('#ffcc44'); icon.setTint(0xffcc44); this.playSfx('sfx_cursor', 0.3); });
       btn.on('pointerout', () => { btn.setColor('#ffffff'); icon.clearTint(); });
@@ -367,14 +367,14 @@ export class BattleScene extends Phaser.Scene {
 
     this.playerMonster.skills.forEach((s, i) => {
       const x = width / 2 - 140 + (i % 2) * 200;
-      const y = height - 68 + Math.floor(i / 2) * 26;
+      const y = height - 90 + Math.floor(i / 2) * 22;
       const elemColor = ELEMENT_COLORS[s.skill.element];
       const elemHex = '#' + elemColor.toString(16).padStart(6, '0');
       const effectTag = s.skill.effect ? this.getEffectTag(s.skill) : '';
       const label = `${s.skill.name}(${s.skill.element}${effectTag}) ${s.currentPp}/${s.skill.pp}`;
       const color = s.currentPp > 0 ? elemHex : '#555555';
       const btn = this.add.text(x, y, label, {
-        fontSize: '11px', color,
+        fontSize: '10px', color,
       }).setInteractive({ useHandCursor: true });
 
       if (s.currentPp > 0) {
@@ -385,8 +385,8 @@ export class BattleScene extends Phaser.Scene {
       this.skillButtons.push(btn);
     });
 
-    const back = this.add.text(width / 2, height - 15, '[返回]', {
-      fontSize: '11px', color: '#889999',
+    const back = this.add.text(width / 2, height - 18, '[返回]', {
+      fontSize: '10px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showActions());
     this.skillButtons.push(back);
@@ -1150,10 +1150,11 @@ export class BattleScene extends Phaser.Scene {
 
     state.team.forEach((m, i) => {
       if (i === this.playerMonsterIndex) return;
-      const y = height - 80 + (i > this.playerMonsterIndex ? i - 1 : i) * 18;
+      const slot = i > this.playerMonsterIndex ? i - 1 : i;
+      const y = height - 95 + slot * 16;
       const color = m.hp > 0 ? '#ffffff' : '#555555';
       const label = `${m.nickname} Lv.${m.level} HP:${m.hp}/${m.maxHp}`;
-      const btn = this.add.text(30, y, label, { fontSize: '11px', color })
+      const btn = this.add.text(30, y, label, { fontSize: '10px', color })
         .setInteractive({ useHandCursor: true });
 
       if (m.hp > 0) {
@@ -1187,8 +1188,8 @@ export class BattleScene extends Phaser.Scene {
       this.skillButtons.push(btn);
     });
 
-    const back = this.add.text(width / 2, height - 15, '[返回]', {
-      fontSize: '11px', color: '#889999',
+    const back = this.add.text(width / 2, height - 18, '[返回]', {
+      fontSize: '10px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showActions());
     this.skillButtons.push(back);
@@ -1289,16 +1290,16 @@ export class BattleScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
 
-    const petBtn = this.add.text(width / 2 - 80, height - 65, '【靈寵行動】', {
-      fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
+    const petBtn = this.add.text(width / 2 - 80, height - 78, '【靈寵行動】', {
+      fontSize: '13px', color: '#ffffff', fontStyle: 'bold',
     }).setInteractive({ useHandCursor: true });
     petBtn.on('pointerover', () => petBtn.setColor('#ffcc44'));
     petBtn.on('pointerout', () => petBtn.setColor('#ffffff'));
     petBtn.on('pointerdown', () => this.showCombatantPetActions());
     this.actionButtons.push(petBtn);
 
-    const humanBtn = this.add.text(width / 2 + 20, height - 65, '【人類行動】', {
-      fontSize: '14px', color: '#ff8844', fontStyle: 'bold',
+    const humanBtn = this.add.text(width / 2 + 20, height - 78, '【人類行動】', {
+      fontSize: '13px', color: '#ff8844', fontStyle: 'bold',
     }).setInteractive({ useHandCursor: true });
     humanBtn.on('pointerover', () => humanBtn.setColor('#ffcc44'));
     humanBtn.on('pointerout', () => humanBtn.setColor('#ff8844'));
@@ -1321,9 +1322,9 @@ export class BattleScene extends Phaser.Scene {
 
     actions.forEach((act, i) => {
       const x = width / 2 - 80 + i * 80;
-      const y = height - 60;
+      const y = height - 75;
       const btn = this.add.text(x, y, act.text, {
-        fontSize: '13px', color: '#ffffff',
+        fontSize: '12px', color: '#ffffff',
       }).setInteractive({ useHandCursor: true });
       btn.on('pointerover', () => btn.setColor('#ffcc44'));
       btn.on('pointerout', () => btn.setColor('#ffffff'));
@@ -1331,8 +1332,8 @@ export class BattleScene extends Phaser.Scene {
       this.actionButtons.push(btn);
     });
 
-    const back = this.add.text(width / 2, height - 15, '[返回]', {
-      fontSize: '11px', color: '#889999',
+    const back = this.add.text(width / 2, height - 18, '[返回]', {
+      fontSize: '10px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showCombatantChoice());
     this.actionButtons.push(back);
@@ -1347,7 +1348,7 @@ export class BattleScene extends Phaser.Scene {
 
     REFINE_PLAYER_SKILLS.forEach((skill, i) => {
       const x = width / 2 - 120 + (i % 2) * 160;
-      const y = height - 68 + Math.floor(i / 2) * 26;
+      const y = height - 90 + Math.floor(i / 2) * 22;
 
       let enabled = true;
       if (skill.type === 'refine') {
@@ -1356,7 +1357,7 @@ export class BattleScene extends Phaser.Scene {
 
       const color = enabled ? '#ff8844' : '#555555';
       const btn = this.add.text(x, y, `${skill.name}(${skill.description})`, {
-        fontSize: '11px', color,
+        fontSize: '10px', color,
       }).setInteractive({ useHandCursor: true });
 
       if (enabled) {
@@ -1367,8 +1368,8 @@ export class BattleScene extends Phaser.Scene {
       this.skillButtons.push(btn);
     });
 
-    const back = this.add.text(width / 2, height - 15, '[返回]', {
-      fontSize: '11px', color: '#889999',
+    const back = this.add.text(width / 2, height - 18, '[返回]', {
+      fontSize: '10px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showCombatantChoice());
     this.skillButtons.push(back);
@@ -1523,14 +1524,16 @@ export class BattleScene extends Phaser.Scene {
     const state = getState();
     const seenIds = Array.from(state.seenMonsterIds);
 
-    seenIds.forEach((id, i) => {
+    const maxVisible = 5;
+    const listStartY = height - 95;
+    seenIds.slice(0, maxVisible).forEach((id, i) => {
       const template = MONSTERS.find(m => m.id === id);
       if (!template) return;
       const isCurrent = this.isTransformed && this.playerMonster.templateId === id;
-      const y = height - 85 + i * 16;
+      const y = listStartY + i * 14;
       const label = `${template.name}${isCurrent ? ' [當前]' : ''}`;
       const color = isCurrent ? '#555555' : '#cc66ff';
-      const btn = this.add.text(30, y, label, { fontSize: '10px', color })
+      const btn = this.add.text(30, y, label, { fontSize: '9px', color })
         .setInteractive({ useHandCursor: true });
 
       if (!isCurrent) {
@@ -1565,8 +1568,8 @@ export class BattleScene extends Phaser.Scene {
       this.skillButtons.push(btn);
     });
 
-    const back = this.add.text(width / 2, height - 15, '[返回]', {
-      fontSize: '11px', color: '#889999',
+    const back = this.add.text(width / 2, height - 18, '[返回]', {
+      fontSize: '10px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showActions());
     this.skillButtons.push(back);
@@ -1581,10 +1584,10 @@ export class BattleScene extends Phaser.Scene {
     const state = getState();
 
     state.team.forEach((m, i) => {
-      const y = height - 85 + i * 16;
+      const y = height - 95 + i * 14;
       const color = m.hp > 0 ? '#ffffff' : '#555555';
       const label = `${m.nickname} Lv.${m.level} HP:${m.hp}/${m.maxHp}`;
-      const btn = this.add.text(30, y, label, { fontSize: '10px', color })
+      const btn = this.add.text(30, y, label, { fontSize: '9px', color })
         .setInteractive({ useHandCursor: true });
 
       if (m.hp > 0) {
@@ -1617,8 +1620,8 @@ export class BattleScene extends Phaser.Scene {
       this.skillButtons.push(btn);
     });
 
-    const back = this.add.text(width / 2, height - 15, '[返回]', {
-      fontSize: '11px', color: '#889999',
+    const back = this.add.text(width / 2, height - 18, '[返回]', {
+      fontSize: '10px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showActions());
     this.skillButtons.push(back);
@@ -1656,9 +1659,9 @@ export class BattleScene extends Phaser.Scene {
 
     displaySkills.forEach((ds, i) => {
       const x = width / 2 - 120 + (i % 2) * 160;
-      const y = height - 68 + Math.floor(i / 2) * 26;
+      const y = height - 90 + Math.floor(i / 2) * 22;
       const btn = this.add.text(x, y, `${ds.name}(${ds.desc})`, {
-        fontSize: '11px', color: ds.color,
+        fontSize: '10px', color: ds.color,
       }).setInteractive({ useHandCursor: true });
       btn.on('pointerover', () => btn.setColor('#ffcc44'));
       btn.on('pointerout', () => btn.setColor(ds.color));
@@ -1933,8 +1936,8 @@ export class BattleScene extends Phaser.Scene {
     this.messageText.setText('選擇煉化目標：');
     const { width, height } = this.scale;
     targets.forEach((t, i) => {
-      const btn = this.add.text(width / 2 - 60, height - 65 + i * 25, `【${t.name}】`, {
-        fontSize: '13px', color: '#ff4444',
+      const btn = this.add.text(width / 2 - 60, height - 82 + i * 22, `【${t.name}】`, {
+        fontSize: '12px', color: '#ff4444',
       }).setInteractive({ useHandCursor: true });
       btn.on('pointerover', () => btn.setColor('#ffcc44'));
       btn.on('pointerout', () => btn.setColor('#ff4444'));

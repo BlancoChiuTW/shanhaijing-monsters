@@ -977,8 +977,8 @@ export class OverworldScene extends Phaser.Scene {
     });
 
     // 融合按鈕
-    const fuseBtn = this.add.text(camW / 2, camH - 40, '【 融 合 】', {
-      fontSize: '14px', color: '#555555', fontStyle: 'bold',
+    const fuseBtn = this.add.text(camW / 2, camH - 42, '【 融 合 】', {
+      fontSize: '13px', color: '#555555', fontStyle: 'bold',
     }).setOrigin(0.5);
 
     fuseBtn.on('pointerdown', () => {
@@ -1009,8 +1009,8 @@ export class OverworldScene extends Phaser.Scene {
 
     container.add(fuseBtn);
 
-    const closeBtn = this.add.text(camW / 2, camH - 18, '取消', {
-      fontSize: '11px', color: '#889999',
+    const closeBtn = this.add.text(camW / 2, camH - 22, '取消', {
+      fontSize: '10px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
     container.add(closeBtn);
@@ -1196,8 +1196,8 @@ export class OverworldScene extends Phaser.Scene {
     });
 
     // 關閉提示
-    container.add(this.add.text(camW / 2, camH - 10, '按 M 或點擊關閉', {
-      fontSize: '9px', color: '#667788',
+    container.add(this.add.text(camW / 2, camH - 16, '按 M 或點擊關閉', {
+      fontSize: '8px', color: '#667788',
     }).setOrigin(0.5));
 
     // 點擊關閉
@@ -1347,8 +1347,8 @@ export class OverworldScene extends Phaser.Scene {
       });
     }
 
-    const closeBtn = this.add.text(camW / 2, camH - 15, '關閉', {
-      fontSize: '12px', color: '#ffcc44',
+    const closeBtn = this.add.text(camW / 2, camH - 20, '關閉', {
+      fontSize: '11px', color: '#ffcc44',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
     container.add(closeBtn);
@@ -1392,9 +1392,10 @@ export class OverworldScene extends Phaser.Scene {
       }).setOrigin(0.5));
 
       // 列出所有靈獸
+      const itemH = Math.min(28, Math.floor((camH - 100) / allMonsters.length));
       allMonsters.forEach((m, i) => {
         const isInTeam = i < state.team.length;
-        const y = 42 + i * 28;
+        const y = 40 + i * itemH;
         const cult = getCultivation(m.level);
 
         // 計算此靈獸累積的總經驗值
@@ -1525,8 +1526,8 @@ export class OverworldScene extends Phaser.Scene {
       }
 
       // 關閉按鈕
-      const closeBtn = this.add.text(camW / 2, camH - 14, '取消', {
-        fontSize: '11px', color: '#667788',
+      const closeBtn = this.add.text(camW / 2, camH - 18, '取消', {
+        fontSize: '10px', color: '#667788',
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
       container.add(closeBtn);
@@ -1664,8 +1665,8 @@ export class OverworldScene extends Phaser.Scene {
       });
 
       // 返回按鈕
-      const backBtn = this.add.text(camW / 2, camH - 14, '<- 返回背包', {
-        fontSize: '11px', color: '#ffcc44',
+      const backBtn = this.add.text(camW / 2, camH - 20, '<- 返回背包', {
+        fontSize: '10px', color: '#ffcc44',
       }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       backBtn.on('pointerdown', () => {
         container.destroy();
@@ -1744,8 +1745,8 @@ export class OverworldScene extends Phaser.Scene {
       }
     });
 
-    const closeBtn = this.add.text(camW / 2, camH - 15, '關閉', {
-      fontSize: '12px', color: '#ffcc44',
+    const closeBtn = this.add.text(camW / 2, camH - 20, '關閉', {
+      fontSize: '11px', color: '#ffcc44',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
     container.add(closeBtn);

@@ -102,21 +102,21 @@ export class EndingScene extends Phaser.Scene {
     }
 
     // 標題
-    const title = this.add.text(width / 2, 40, '山海靈獸師', {
-      fontSize: '38px', fontFamily: 'serif', color: cfg.titleColor, fontStyle: 'bold',
+    const title = this.add.text(width / 2, 35, '山海靈獸師', {
+      fontSize: '28px', fontFamily: 'serif', color: cfg.titleColor, fontStyle: 'bold',
     }).setOrigin(0.5).setAlpha(0);
 
     this.tweens.add({ targets: title, alpha: 1, duration: 1500 });
 
     // 結局類型副標題
-    const endLabel = this.add.text(width / 2, 80, cfg.title, {
-      fontSize: '22px', fontFamily: 'serif', color: cfg.subtitleColor,
+    const endLabel = this.add.text(width / 2, 65, cfg.title, {
+      fontSize: '18px', fontFamily: 'serif', color: cfg.subtitleColor,
     }).setOrigin(0.5).setAlpha(0);
 
     this.tweens.add({ targets: endLabel, alpha: 1, duration: 1500, delay: 300 });
 
-    const endSubLabel = this.add.text(width / 2, 105, cfg.subtitle, {
-      fontSize: '14px', fontFamily: 'serif', color: cfg.subtitleColor,
+    const endSubLabel = this.add.text(width / 2, 88, cfg.subtitle, {
+      fontSize: '12px', fontFamily: 'serif', color: cfg.subtitleColor,
     }).setOrigin(0.5).setAlpha(0);
 
     this.tweens.add({ targets: endSubLabel, alpha: 1, duration: 1200, delay: 600 });
@@ -124,8 +124,8 @@ export class EndingScene extends Phaser.Scene {
     // 敘事文字
     let delay = 1500;
     cfg.narratives.forEach((line, i) => {
-      const txt = this.add.text(width / 2, 135 + i * 18, line, {
-        fontSize: '11px', color: '#cccccc', align: 'center',
+      const txt = this.add.text(width / 2, 110 + i * 16, line, {
+        fontSize: '10px', color: '#cccccc', align: 'center',
       }).setOrigin(0.5).setAlpha(0);
       this.tweens.add({ targets: txt, alpha: 1, duration: 600, delay });
       delay += 300;
@@ -135,31 +135,32 @@ export class EndingScene extends Phaser.Scene {
 
     // 隊伍展示（bad end 不展示詳情）
     if (this.endingType !== 'bad') {
-      const teamLabel = this.add.text(width / 2, 135 + cfg.narratives.length * 18 + 10, '— 你的隊伍 —', {
-        fontSize: '12px', color: '#888888',
+      const teamLabelY = 110 + cfg.narratives.length * 16 + 8;
+      const teamLabel = this.add.text(width / 2, teamLabelY, '— 你的隊伍 —', {
+        fontSize: '10px', color: '#888888',
       }).setOrigin(0.5).setAlpha(0);
       this.tweens.add({ targets: teamLabel, alpha: 1, duration: 600, delay });
       delay += 300;
 
-      const teamStartY = 135 + cfg.narratives.length * 18 + 30;
+      const teamStartY = teamLabelY + 18;
       state.team.forEach((m, i) => {
-        const y = teamStartY + i * 32;
+        const y = teamStartY + i * 28;
         const cult = getCultivation(m.level);
         const shinyTag = m.isShiny ? '[異] ' : '';
         const fusedTag = m.isFused ? '[融] ' : '';
         const deadTag = this.endingType === 'normal' ? ' (已煉化)' : '';
 
-        const sprite = this.add.image(65, y + 8, `monster_${m.templateId}`);
-        sprite.setDisplaySize(24, 24).setAlpha(0);
+        const sprite = this.add.image(55, y + 6, `monster_${m.templateId}`);
+        sprite.setDisplaySize(20, 20).setAlpha(0);
         if (m.isShiny) sprite.setTint(0xffdd88);
         if (this.endingType === 'normal') sprite.setTint(0x555555);
 
-        const info = this.add.text(85, y, `${shinyTag}${fusedTag}${m.nickname}${deadTag}`, {
-          fontSize: '11px', color: this.endingType === 'normal' ? '#666666' : '#ffffff', fontStyle: 'bold',
+        const info = this.add.text(72, y, `${shinyTag}${fusedTag}${m.nickname}${deadTag}`, {
+          fontSize: '10px', color: this.endingType === 'normal' ? '#666666' : '#ffffff', fontStyle: 'bold',
         }).setAlpha(0);
 
-        const cultText = this.add.text(85, y + 14, `${cult.displayName}  HP:${m.maxHp} 攻:${m.atk} 防:${m.def} 速:${m.spd}`, {
-          fontSize: '8px', color: this.endingType === 'normal' ? '#555555' : cult.color,
+        const cultText = this.add.text(72, y + 13, `${cult.displayName}  HP:${m.maxHp} 攻:${m.atk} 防:${m.def} 速:${m.spd}`, {
+          fontSize: '7px', color: this.endingType === 'normal' ? '#555555' : cult.color,
         }).setAlpha(0);
 
         this.tweens.add({ targets: [sprite, info, cultText], alpha: 1, duration: 500, delay });
@@ -172,22 +173,22 @@ export class EndingScene extends Phaser.Scene {
     // 圖鑑完成度
     const caught = state.caughtIds.size;
     const total = MONSTERS.length;
-    const dexText = this.add.text(width / 2, height - 80, `靈獸圖鑑：${caught}/${total}`, {
-      fontSize: '14px', color: '#ffcc44',
+    const dexText = this.add.text(width / 2, height - 65, `靈獸圖鑑：${caught}/${total}`, {
+      fontSize: '12px', color: '#ffcc44',
     }).setOrigin(0.5).setAlpha(0);
 
     this.tweens.add({ targets: dexText, alpha: 1, duration: 800, delay });
 
     // 製作人員
-    const credits = this.add.text(width / 2, height - 55, 'v0.3 Demo — BlancoChiuTW x Claude | Icons: game-icons.net (CC BY 3.0)', {
-      fontSize: '9px', color: '#445566',
+    const credits = this.add.text(width / 2, height - 45, 'v0.4 Demo — BlancoChiuTW × Claude | Icons: game-icons.net (CC BY 3.0)', {
+      fontSize: '8px', color: '#445566',
     }).setOrigin(0.5).setAlpha(0);
 
     this.tweens.add({ targets: credits, alpha: 1, duration: 800, delay: delay + 300 });
 
     // 返回按鈕
-    const backBtn = this.add.text(width / 2, height - 25, '【 返回主選單 】', {
-      fontSize: '14px', color: '#667788',
+    const backBtn = this.add.text(width / 2, height - 22, '【 返回主選單 】', {
+      fontSize: '12px', color: '#667788',
     }).setOrigin(0.5).setAlpha(0).setInteractive({ useHandCursor: true });
 
     backBtn.on('pointerover', () => backBtn.setColor('#ffcc44'));
