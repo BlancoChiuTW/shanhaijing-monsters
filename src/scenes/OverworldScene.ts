@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { getMap, type GameMap, type MapNpc } from '../data/maps';
 import { getState, saveGame, getFirstAliveIndex, healTeam, addMonsterToTeam } from '../utils/gameState';
-import { createMonsterInstance, MONSTERS, getCultivation, fuseMonsters, type MonsterInstance } from '../data/monsters';
+import { createMonsterInstance, MONSTERS, getCultivation, fuseMonsters, swapSkill, type MonsterInstance } from '../data/monsters';
 import { healMonster, applyExp, getExpReward } from '../utils/battle';
 
 const TILE_SIZE = 32;
@@ -114,9 +114,9 @@ export class OverworldScene extends Phaser.Scene {
 
       // NPC 類型圖示
       let icon = '';
-      if (npc.npcType === 'healer') icon = '♥';
-      else if (npc.npcType === 'fusion') icon = '⚗';
-      else if (npc.npcType === 'trainer') icon = '⚔';
+      if (npc.npcType === 'healer') icon = '[療]';
+      else if (npc.npcType === 'fusion') icon = '[煉]';
+      else if (npc.npcType === 'trainer') icon = '[戰]';
 
       if (icon) {
         const iconText = this.add.text(TILE_SIZE / 2 - 4, -TILE_SIZE / 2 + 2, icon, {
@@ -335,59 +335,137 @@ export class OverworldScene extends Phaser.Scene {
         return;
       }
 
-      const boxH = 60;
+      const boxH = 80;
       const camW = this.scale.width;
       const camH = this.scale.height;
+      const isLast = dialogueIndex === npc.dialogue.length - 1;
 
       const container = this.add.container(0, 0);
       container.setScrollFactor(0).setDepth(200);
 
-      const bg = this.add.rectangle(camW / 2, camH - boxH / 2 - 5, camW - 20, boxH, 0x000000, 0.85);
-      bg.setStrokeStyle(1, 0xffcc44);
+      // 對話框背景 — 高對比度
+      const bg = this.add.rectangle(camW / 2, camH - boxH / 2 - 4, camW - 16, boxH, 0x0a0a1a, 0.95);
+      bg.setStrokeStyle(2, 0xffcc44);
       container.add(bg);
 
-      const nameLabel = this.add.text(20, camH - boxH - 2, npc.name, {
+      // 內框裝飾線
+      const inner = this.add.rectangle(camW / 2, camH - boxH / 2 - 4, camW - 24, boxH - 8, 0x000000, 0);
+      inner.setStrokeStyle(1, 0x334455);
+      container.add(inner);
+
+      // NPC 頭像區域 (左側)
+      let npcSpriteKey = 'npc_default';
+      if (npc.npcType === 'trainer') npcSpriteKey = 'npc_trainer';
+      else if (npc.npcType === 'healer') npcSpriteKey = 'npc_healer';
+      else if (npc.npcType === 'fusion') npcSpriteKey = 'npc_fusion';
+
+      const portrait = this.add.image(28, camH - boxH / 2 - 4, npcSpriteKey);
+      portrait.setDisplaySize(32, 32);
+      container.add(portrait);
+
+      // NPC 名稱（頭像上方）
+      const nameLabel = this.add.text(12, camH - boxH - 10, npc.name, {
         fontSize: '11px', color: '#ffcc44', fontStyle: 'bold',
+        backgroundColor: '#0a0a1a', padding: { x: 4, y: 1 },
       });
       container.add(nameLabel);
 
       // NPC 類型標籤
       let typeTag = '';
-      if (npc.npcType === 'healer') typeTag = ' [治療]';
-      else if (npc.npcType === 'fusion') typeTag = ' [練妖壺]';
-      else if (npc.npcType === 'trainer') typeTag = ' [對戰]';
+      if (npc.npcType === 'healer') typeTag = '[治療]';
+      else if (npc.npcType === 'fusion') typeTag = '[練妖壺]';
+      else if (npc.npcType === 'trainer') typeTag = '[對戰]';
       if (typeTag) {
-        const tag = this.add.text(camW - 25, camH - boxH - 2, typeTag, {
-          fontSize: '9px', color: '#88aacc',
-        }).setOrigin(1, 0);
-        container.add(tag);
+        container.add(this.add.text(nameLabel.x + nameLabel.width + 6, camH - boxH - 10, typeTag, {
+          fontSize: '9px', color: '#88aacc', backgroundColor: '#0a0a1a', padding: { x: 2, y: 2 },
+        }));
       }
 
-      const text = this.add.text(20, camH - boxH + 16, npc.dialogue[dialogueIndex], {
-        fontSize: '12px', color: '#ffffff',
-        wordWrap: { width: camW - 50 },
+      // 對話文字 — 打字機效果
+      const fullText = npc.dialogue[dialogueIndex];
+      const textObj = this.add.text(52, camH - boxH + 10, '', {
+        fontSize: '12px', color: '#ffffff', lineSpacing: 4,
+        wordWrap: { width: camW - 80 },
       });
-      container.add(text);
+      container.add(textObj);
 
-      const hint = this.add.text(camW - 25, camH - 15, '▼', {
-        fontSize: '10px', color: '#ffcc44',
+      let charIdx = 0;
+      let typewriterDone = false;
+      const typeSpeed = 25; // ms per char
+
+      const typeTimer = this.time.addEvent({
+        delay: typeSpeed,
+        repeat: fullText.length - 1,
+        callback: () => {
+          charIdx++;
+          textObj.setText(fullText.substring(0, charIdx));
+          if (charIdx >= fullText.length) {
+            typewriterDone = true;
+            showHint();
+          }
+        },
       });
-      container.add(hint);
+
+      // 推進提示 (打字完成後顯示)
+      let hintObj: Phaser.GameObjects.Text | null = null;
+      const showHint = () => {
+        const hintText = isLast ? '[Z/Space] 結束對話' : '[Z/Space] 繼續 >>';
+        const hintColor = isLast ? '#88aacc' : '#ffcc44';
+        hintObj = this.add.text(camW - 16, camH - 12, hintText, {
+          fontSize: '9px', color: hintColor,
+        }).setOrigin(1, 0.5);
+        container.add(hintObj);
+
+        // 閃爍動畫
+        this.tweens.add({
+          targets: hintObj,
+          alpha: 0.3,
+          duration: 500,
+          yoyo: true,
+          repeat: -1,
+        });
+      };
 
       this.dialogueBox = container;
       dialogueIndex++;
 
+      // 推進邏輯
+      let advanceLocked = true; // 防止連按
+      this.time.delayedCall(80, () => { advanceLocked = false; });
+
       const advance = () => {
-        if (!this.input.keyboard) return;
-        this.input.off('pointerdown', advance);
-        this.wasd.Z.off('down', advance);
+        if (advanceLocked) return;
+        if (!typewriterDone) {
+          // 打字未完成 → 直接顯示全文
+          typeTimer.remove();
+          textObj.setText(fullText);
+          typewriterDone = true;
+          showHint();
+          advanceLocked = true;
+          this.time.delayedCall(150, () => { advanceLocked = false; });
+          return;
+        }
+        // 移除所有監聽
+        cleanup();
         showDialogue();
       };
 
-      this.time.delayedCall(100, () => {
-        this.input.once('pointerdown', advance);
-        this.wasd.Z.once('down', advance);
-      });
+      const onKey = (event: KeyboardEvent) => {
+        if (event.code === 'KeyZ' || event.code === 'Space' || event.code === 'Enter') {
+          advance();
+        }
+      };
+
+      const onPointer = () => advance();
+
+      // 綁定事件
+      this.input.keyboard?.on('keydown', onKey);
+      this.input.on('pointerdown', onPointer);
+
+      const cleanup = () => {
+        this.input.keyboard?.off('keydown', onKey);
+        this.input.off('pointerdown', onPointer);
+      };
     };
 
     showDialogue();
@@ -497,7 +575,7 @@ export class OverworldScene extends Phaser.Scene {
     state.team.forEach((m, i) => {
       const y = 48 + i * 22;
       const cult = getCultivation(m.level);
-      const shinyTag = m.isShiny ? '✦' : '';
+      const shinyTag = m.isShiny ? '[異]' : '';
       const fusedTag = m.isFused ? '融' : '';
       const info = `${shinyTag}${fusedTag}${m.nickname} ${cult.displayName} HP:${m.hp}/${m.maxHp} 攻:${m.atk}`;
       const btn = this.add.text(15, y, info, { fontSize: '10px', color: '#ffffff' })
@@ -639,12 +717,12 @@ export class OverworldScene extends Phaser.Scene {
     }).setOrigin(0.5));
 
     const options = [
-      { text: '📋 靈獸背包', action: () => this.showBackpack(container) },
-      { text: '🔥 練化（互吃）', action: () => this.showAbsorptionMenu(container) },
-      { text: '📖 靈獸圖鑑', action: () => this.showPokedex(container) },
-      { text: '♥ 回復全隊', action: () => { healTeam(); this.updateInfoText(); closeMenu(); this.showNotification('全隊已恢復！', 0x44ff88); } },
-      { text: '💾 儲存遊戲', action: () => { saveGame(); closeMenu(); this.showNotification('遊戲已儲存！', 0x44aaff); } },
-      { text: '✕ 關閉', action: () => closeMenu() },
+      { text: '[背包] 靈獸背包', action: () => this.showBackpack(container) },
+      { text: '[練化] 靈獸互吃', action: () => this.showAbsorptionMenu(container) },
+      { text: '[圖鑑] 靈獸圖鑑', action: () => this.showPokedex(container) },
+      { text: '[回復] 回復全隊', action: () => { healTeam(); this.updateInfoText(); closeMenu(); this.showNotification('全隊已恢復！', 0x44ff88); } },
+      { text: '[存檔] 儲存遊戲', action: () => { saveGame(); closeMenu(); this.showNotification('遊戲已儲存！', 0x44aaff); } },
+      { text: '[關閉] 返回遊戲', action: () => closeMenu() },
     ];
 
     options.forEach((opt, i) => {
@@ -700,7 +778,7 @@ export class OverworldScene extends Phaser.Scene {
       container.add(sprite);
 
       // 名稱 + 境界
-      const shinyTag = m.isShiny ? '✦' : '';
+      const shinyTag = m.isShiny ? '[異]' : '';
       const fusedTag = m.isFused ? '[融]' : '';
       container.add(this.add.text(38, startY, `${shinyTag}${fusedTag}${m.nickname}`, {
         fontSize: '10px', color: hpColor, fontStyle: 'bold',
@@ -927,82 +1005,139 @@ export class OverworldScene extends Phaser.Scene {
 
     const camW = this.scale.width;
     const camH = this.scale.height;
+    let swapMode: { equippedIdx: number } | null = null;
+
+    const redrawDetail = () => {
+      container.removeAll(true);
+
+      const bg = this.add.rectangle(camW / 2, camH / 2, camW - 10, camH - 10, 0x0a0a1a, 0.95);
+      bg.setStrokeStyle(2, 0xffcc44);
+      container.add(bg);
+
+      const cult = getCultivation(m.level);
+
+      // 靈獸大圖
+      const sprite = this.add.image(70, 40, `monster_${m.templateId}`);
+      sprite.setDisplaySize(48, 48);
+      if (m.isShiny) sprite.setTint(0xffdd88);
+      container.add(sprite);
+
+      if (cult.realmIndex >= 1) {
+        const aura = this.add.circle(70, 40, 28 + cult.realmIndex * 2, parseInt(cult.color.replace('#', '0x')), 0.15);
+        container.add(aura);
+      }
+
+      // 名稱 + 境界
+      const shinyTag = m.isShiny ? '[異] ' : '';
+      const fusedTag = m.isFused ? '[融] ' : '';
+      container.add(this.add.text(110, 22, `${shinyTag}${fusedTag}${m.nickname}`, {
+        fontSize: '13px', color: '#ffffff', fontStyle: 'bold',
+      }));
+      container.add(this.add.text(110, 38, cult.displayName, {
+        fontSize: '11px', color: cult.color,
+      }));
+
+      // 素質
+      container.add(this.add.text(110, 54, `HP:${m.hp}/${m.maxHp} 攻:${m.atk} 防:${m.def} 速:${m.spd}`, {
+        fontSize: '8px', color: '#aabbcc',
+      }));
+      const expNeeded = m.level <= 30 ? m.level * 40 + 20 : m.level * 80;
+      container.add(this.add.text(110, 65, `EXP: ${m.exp}/${expNeeded}`, {
+        fontSize: '8px', color: '#667788',
+      }));
+
+      // ── 裝備中的技能 ──
+      container.add(this.add.text(15, 82, '-- 裝備中 (戰鬥使用) --', {
+        fontSize: '9px', color: '#ffcc44',
+      }));
+
+      m.skills.forEach((s, i) => {
+        const y = 96 + i * 18;
+        const effectTag = s.skill.effect ? this.getEffectLabel(s.skill) : '';
+        const isSelected = swapMode?.equippedIdx === i;
+        const color = isSelected ? '#ff6644' : '#ffffff';
+
+        const nameBtn = this.add.text(15, y, `${i + 1}. ${s.skill.name} (${s.skill.element})`, {
+          fontSize: '9px', color, fontStyle: isSelected ? 'bold' : 'normal',
+        }).setInteractive({ useHandCursor: true });
+
+        container.add(nameBtn);
+        container.add(this.add.text(camW - 15, y, `威力:${s.skill.power} 命中:${s.skill.accuracy} PP:${s.currentPp}/${s.skill.pp} ${effectTag}`, {
+          fontSize: '7px', color: '#889999',
+        }).setOrigin(1, 0));
+
+        // 點擊裝備中的技能 → 進入交換模式
+        nameBtn.on('pointerdown', () => {
+          if (m.learnedSkills.length === 0) return; // 沒有可交換的
+          if (swapMode?.equippedIdx === i) {
+            swapMode = null; // 取消
+          } else {
+            swapMode = { equippedIdx: i };
+          }
+          redrawDetail();
+        });
+
+        if (isSelected) {
+          container.add(this.add.text(camW - 15, y + 9, '<- 點選下方技能替換', {
+            fontSize: '7px', color: '#ff6644',
+          }).setOrigin(1, 0));
+        }
+      });
+
+      // ── 技能池（已習得未裝備）──
+      const poolY = 96 + Math.max(m.skills.length, 4) * 18 + 8;
+      const poolLabel = m.learnedSkills.length > 0
+        ? `-- 技能池 (${m.learnedSkills.length}) 點擊可替換 --`
+        : '-- 技能池 (空) --';
+      container.add(this.add.text(15, poolY, poolLabel, {
+        fontSize: '9px', color: swapMode ? '#ff6644' : '#667788',
+      }));
+
+      m.learnedSkills.forEach((s, i) => {
+        const y = poolY + 14 + i * 16;
+        const effectTag = s.effect ? this.getEffectLabel(s) : '';
+        const color = swapMode ? '#44ccff' : '#556677';
+
+        const poolBtn = this.add.text(15, y, `  ${s.name} (${s.element})`, {
+          fontSize: '8px', color,
+        }).setInteractive({ useHandCursor: true });
+
+        container.add(poolBtn);
+        container.add(this.add.text(camW - 15, y, `威力:${s.power} 命中:${s.accuracy} PP:${s.pp} ${effectTag}`, {
+          fontSize: '7px', color: '#556677',
+        }).setOrigin(1, 0));
+
+        poolBtn.on('pointerdown', () => {
+          if (swapMode) {
+            // 執行交換
+            swapSkill(m, swapMode.equippedIdx, i);
+            swapMode = null;
+            redrawDetail();
+          } else {
+            // 如果沒選裝備中的技能，自動選第一個裝備欄
+            swapMode = { equippedIdx: 0 };
+            redrawDetail();
+          }
+        });
+      });
+
+      // 返回按鈕
+      const backBtn = this.add.text(camW / 2, camH - 14, '<- 返回背包', {
+        fontSize: '11px', color: '#ffcc44',
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      backBtn.on('pointerdown', () => {
+        container.destroy();
+        this.dialogueBox = null;
+        const dummyContainer = this.add.container(0, 0);
+        this.showBackpack(dummyContainer);
+      });
+      container.add(backBtn);
+    };
 
     const container = this.add.container(0, 0);
     container.setScrollFactor(0).setDepth(200);
-
-    const bg = this.add.rectangle(camW / 2, camH / 2, camW - 10, camH - 10, 0x0a0a1a, 0.95);
-    bg.setStrokeStyle(2, 0xffcc44);
-    container.add(bg);
-
-    const cult = getCultivation(m.level);
-
-    // 靈獸大圖
-    const sprite = this.add.image(camW / 2, 55, `monster_${m.templateId}`);
-    sprite.setDisplaySize(64, 64);
-    if (m.isShiny) sprite.setTint(0xffdd88);
-    container.add(sprite);
-
-    // 境界光環 (根據境界等級)
-    if (cult.realmIndex >= 1) {
-      const aura = this.add.circle(camW / 2, 55, 36 + cult.realmIndex * 3, parseInt(cult.color.replace('#', '0x')), 0.15);
-      aura.setStrokeStyle(1, parseInt(cult.color.replace('#', '0x')));
-      container.add(aura);
-    }
-
-    // 名稱
-    const shinyTag = m.isShiny ? '✦ ' : '';
-    const fusedTag = m.isFused ? '[融] ' : '';
-    container.add(this.add.text(camW / 2, 95, `${shinyTag}${fusedTag}${m.nickname}`, {
-      fontSize: '14px', color: '#ffffff', fontStyle: 'bold',
-    }).setOrigin(0.5));
-
-    // 境界
-    container.add(this.add.text(camW / 2, 112, cult.displayName, {
-      fontSize: '12px', color: cult.color,
-    }).setOrigin(0.5));
-
-    // 素質
-    const statsText = `HP: ${m.hp}/${m.maxHp}　攻擊: ${m.atk}　防禦: ${m.def}　速度: ${m.spd}`;
-    container.add(this.add.text(camW / 2, 130, statsText, {
-      fontSize: '9px', color: '#aabbcc',
-    }).setOrigin(0.5));
-
-    // 經驗值
-    const expNeeded = m.level <= 30 ? m.level * 40 + 20 : m.level * 80;
-    container.add(this.add.text(camW / 2, 145, `經驗值: ${m.exp}/${expNeeded}`, {
-      fontSize: '9px', color: '#667788',
-    }).setOrigin(0.5));
-
-    // 技能列表
-    container.add(this.add.text(15, 162, '— 技 能 —', {
-      fontSize: '10px', color: '#ffcc44',
-    }));
-
-    m.skills.forEach((s, i) => {
-      const y = 178 + i * 20;
-      const effectTag = s.skill.effect ? this.getEffectLabel(s.skill) : '';
-      container.add(this.add.text(15, y, `${s.skill.name} (${s.skill.element})`, {
-        fontSize: '10px', color: '#ffffff',
-      }));
-      container.add(this.add.text(camW - 15, y, `威力:${s.skill.power} 命中:${s.skill.accuracy} PP:${s.currentPp}/${s.skill.pp} ${effectTag}`, {
-        fontSize: '8px', color: '#889999',
-      }).setOrigin(1, 0));
-    });
-
-    const backBtn = this.add.text(camW / 2, camH - 15, '← 返回', {
-      fontSize: '12px', color: '#ffcc44',
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    backBtn.on('pointerdown', () => {
-      container.destroy();
-      this.dialogueBox = null;
-      // Re-open backpack
-      const dummyContainer = this.add.container(0, 0);
-      this.showBackpack(dummyContainer);
-    });
-    container.add(backBtn);
-
     this.dialogueBox = container;
+    redrawDetail();
   }
 
   private getEffectLabel(skill: { effect?: { type: string } }): string {

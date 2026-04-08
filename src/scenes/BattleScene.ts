@@ -134,8 +134,8 @@ export class BattleScene extends Phaser.Scene {
     const pCult = getCultivation(this.playerMonster.level);
     const eCult = getCultivation(this.enemyMonster.level);
 
-    const pShiny = this.playerMonster.isShiny ? '✦' : '';
-    const eShiny = this.enemyMonster.isShiny ? '✦' : '';
+    const pShiny = this.playerMonster.isShiny ? '[異]' : '';
+    const eShiny = this.enemyMonster.isShiny ? '[異]' : '';
 
     this.enemyInfoText.setText(
       `${eShiny}${this.enemyMonster.nickname} ${eCult.displayName}\nHP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}${eStages}`
@@ -187,15 +187,15 @@ export class BattleScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
     const actions = [
-      { text: '⚔ 技能', action: () => this.showSkills() },
-      { text: '🔄 換獸', action: () => this.showSwitchMenu() },
+      { text: '[技能] 攻擊', action: () => this.showSkills() },
+      { text: '[換獸] 替換', action: () => this.showSwitchMenu() },
     ];
 
     if (this.battleType === 'wild') {
-      actions.push({ text: '📜 捕獲', action: () => this.tryCatch() });
-      actions.push({ text: '🏃 逃跑', action: () => this.tryRun() });
+      actions.push({ text: '[捕獲] 靈符', action: () => this.tryCatch() });
+      actions.push({ text: '[逃跑] 撤退', action: () => this.tryRun() });
     } else {
-      actions.push({ text: '🏃 認輸', action: () => this.tryRun() });
+      actions.push({ text: '[認輸] 撤退', action: () => this.tryRun() });
     }
 
     actions.forEach((act, i) => {
@@ -237,7 +237,7 @@ export class BattleScene extends Phaser.Scene {
       this.skillButtons.push(btn);
     });
 
-    const back = this.add.text(width / 2, height - 15, '← 返回', {
+    const back = this.add.text(width / 2, height - 15, '[返回]', {
       fontSize: '11px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showActions());
@@ -247,12 +247,12 @@ export class BattleScene extends Phaser.Scene {
   private getEffectTag(skill: Skill): string {
     if (!skill.effect) return '';
     switch (skill.effect.type) {
-      case 'heal': return '♥';
-      case 'drain': return '♥';
-      case 'recoil': return '⚡';
-      case 'statUp': return '↑';
-      case 'statDown': return '↓';
-      case 'priority': return '»';
+      case 'heal': return '[回]';
+      case 'drain': return '[吸]';
+      case 'recoil': return '[反]';
+      case 'statUp': return '[增]';
+      case 'statDown': return '[減]';
+      case 'priority': return '[先]';
       default: return '';
     }
   }
@@ -843,7 +843,7 @@ export class BattleScene extends Phaser.Scene {
       this.skillButtons.push(btn);
     });
 
-    const back = this.add.text(width / 2, height - 15, '← 返回', {
+    const back = this.add.text(width / 2, height - 15, '[返回]', {
       fontSize: '11px', color: '#889999',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', () => this.showActions());

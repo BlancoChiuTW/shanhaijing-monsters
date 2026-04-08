@@ -47,7 +47,8 @@ export interface MonsterInstance {
   def: number;
   spd: number;
   exp: number;
-  skills: { skill: Skill; currentPp: number }[];
+  skills: { skill: Skill; currentPp: number }[];       // 裝備中的技能 (max 4)
+  learnedSkills: Skill[];                               // 已習得但未裝備的技能池
   atkStage: number;
   defStage: number;
   spdStage: number;
@@ -309,13 +310,26 @@ export const MONSTERS: MonsterTemplate[] = [
 //  建立與升級
 // ═══════════════════════════════════════
 
-function getSkillsForLevel(template: MonsterTemplate, level: number): { skill: Skill; currentPp: number }[] {
-  const learned = template.skills
+function getSkillsForLevel(template: MonsterTemplate, level: number): {
+  equipped: { skill: Skill; currentPp: number }[];
+  pool: Skill[];
+} {
+  const allLearned = template.skills
     .filter(ts => ts.learnLevel <= level)
-    .sort((a, b) => b.learnLevel - a.learnLevel)
-    .slice(0, 4);
-  learned.sort((a, b) => a.learnLevel - b.learnLevel);
-  return learned.map(ts => ({ skill: ts.skill, currentPp: ts.skill.pp }));
+    .sort((a, b) => b.learnLevel - a.learnLevel);
+
+  // 裝備最強的 4 招
+  const equipped = allLearned.slice(0, 4);
+  equipped.sort((a, b) => a.learnLevel - b.learnLevel);
+
+  // 剩餘的放進技能池
+  const equippedNames = new Set(equipped.map(ts => ts.skill.name));
+  const pool = allLearned.filter(ts => !equippedNames.has(ts.skill.name)).map(ts => ts.skill);
+
+  return {
+    equipped: equipped.map(ts => ({ skill: ts.skill, currentPp: ts.skill.pp })),
+    pool,
+  };
 }
 
 export function calcStats(baseHp: number, baseAtk: number, baseDef: number, baseSpd: number, level: number) {
@@ -333,6 +347,7 @@ export function createMonsterInstance(templateId: string, level: number): Monste
   if (!template) throw new Error(`Unknown monster: ${templateId}`);
 
   const stats = calcStats(template.baseHp, template.baseAtk, template.baseDef, template.baseSpd, level);
+  const { equipped, pool } = getSkillsForLevel(template, level);
 
   return {
     templateId,
@@ -344,7 +359,8 @@ export function createMonsterInstance(templateId: string, level: number): Monste
     def: stats.def,
     spd: stats.spd,
     exp: 0,
-    skills: getSkillsForLevel(template, level),
+    skills: equipped,
+    learnedSkills: pool,
     atkStage: 0, defStage: 0, spdStage: 0,
   };
 }
@@ -354,30 +370,33 @@ export function checkNewSkills(monster: MonsterInstance): string[] {
   if (!template) return [];
 
   const newSkills: string[] = [];
-  const currentNames = new Set(monster.skills.map(s => s.skill.name));
+  // 所有已知技能名（裝備 + 池）
+  const knownNames = new Set([
+    ...monster.skills.map(s => s.skill.name),
+    ...monster.learnedSkills.map(s => s.name),
+  ]);
 
   for (const ts of template.skills) {
-    if (ts.learnLevel === monster.level && !currentNames.has(ts.skill.name)) {
+    if (ts.learnLevel === monster.level && !knownNames.has(ts.skill.name)) {
       if (monster.skills.length < 4) {
+        // 裝備欄還有空位，直接裝備
         monster.skills.push({ skill: ts.skill, currentPp: ts.skill.pp });
       } else {
-        let weakestIdx = -1;
-        let weakestPower = Infinity;
-        for (let i = 0; i < monster.skills.length; i++) {
-          const s = monster.skills[i];
-          if (s.skill.power > 0 && s.skill.power < weakestPower) {
-            weakestPower = s.skill.power;
-            weakestIdx = i;
-          }
-        }
-        if (weakestIdx >= 0 && ts.skill.power > weakestPower) {
-          monster.skills[weakestIdx] = { skill: ts.skill, currentPp: ts.skill.pp };
-        }
+        // 裝備欄已滿，放進技能池
+        monster.learnedSkills.push(ts.skill);
       }
       newSkills.push(ts.skill.name);
     }
   }
   return newSkills;
+}
+
+/** 交換裝備中的技能與技能池中的技能 */
+export function swapSkill(monster: MonsterInstance, equippedIndex: number, poolIndex: number): void {
+  const removed = monster.skills[equippedIndex];
+  const newSkill = monster.learnedSkills[poolIndex];
+  monster.skills[equippedIndex] = { skill: newSkill, currentPp: newSkill.pp };
+  monster.learnedSkills[poolIndex] = removed.skill;
 }
 
 /** 取得靈獸的基礎素質 (考慮融合) */
@@ -424,13 +443,15 @@ export function fuseMonsters(a: MonsterInstance, b: MonsterInstance): MonsterIns
     spd: rand(aBase.spd, bBase.spd),
   };
 
-  // 技能池：A 的 4 招 + B 的 4 招 = 8 招，隨機抽 4 招
-  const allSkills = [...a.skills, ...b.skills];
-  // 去重
-  const unique = new Map<string, { skill: Skill; currentPp: number }>();
-  for (const s of allSkills) unique.set(s.skill.name, s);
-  const pool = Array.from(unique.values()).sort(() => Math.random() - 0.5);
-  const picked = pool.slice(0, 4).map(s => ({ skill: s.skill, currentPp: s.skill.pp }));
+  // 技能池：雙方全部技能（裝備+池）去重後隨機抽 4 招裝備，其餘進技能池
+  const allSkillSet = new Map<string, Skill>();
+  for (const s of a.skills) allSkillSet.set(s.skill.name, s.skill);
+  for (const s of b.skills) allSkillSet.set(s.skill.name, s.skill);
+  for (const s of (a.learnedSkills || [])) allSkillSet.set(s.name, s);
+  for (const s of (b.learnedSkills || [])) allSkillSet.set(s.name, s);
+  const shuffled = Array.from(allSkillSet.values()).sort(() => Math.random() - 0.5);
+  const picked = shuffled.slice(0, 4).map(s => ({ skill: s, currentPp: s.pp }));
+  const fusionPool = shuffled.slice(4);
 
   // 異色：10% 機率
   const isShiny = Math.random() < 0.1;
@@ -448,6 +469,7 @@ export function fuseMonsters(a: MonsterInstance, b: MonsterInstance): MonsterIns
     spd: stats.spd,
     exp: 0,
     skills: picked,
+    learnedSkills: fusionPool,
     atkStage: 0, defStage: 0, spdStage: 0,
     isFused: true,
     isShiny,

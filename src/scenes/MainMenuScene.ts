@@ -136,7 +136,7 @@ export class MainMenuScene extends Phaser.Scene {
     });
 
     // Back button
-    const backBtn = this.add.text(width / 2, 380, '← 返回', {
+    const backBtn = this.add.text(width / 2, 380, '[返回]', {
       fontSize: '16px',
       color: '#667788',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });

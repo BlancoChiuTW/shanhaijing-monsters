@@ -60,7 +60,7 @@ export class EndingScene extends Phaser.Scene {
     state.team.forEach((m, i) => {
       const y = 160 + i * 42;
       const cult = getCultivation(m.level);
-      const shinyTag = m.isShiny ? '✦ ' : '';
+      const shinyTag = m.isShiny ? '[異] ' : '';
       const fusedTag = m.isFused ? '[融] ' : '';
 
       // 靈獸圖片
