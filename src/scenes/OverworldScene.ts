@@ -142,9 +142,20 @@ export class OverworldScene extends Phaser.Scene {
 
     this.updateInfoText();
 
-    this.add.text(this.scale.width - 10, 10, '[M]選單 [Z]互動', {
-      fontSize: '10px', color: '#667788',
-      backgroundColor: '#000000aa', padding: { x: 6, y: 3 },
+    // 操作提示 — 右上角
+    this.add.text(this.scale.width - 10, 10, '方向鍵/WASD 移動', {
+      fontSize: '9px', color: '#667788',
+      backgroundColor: '#000000aa', padding: { x: 6, y: 2 },
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+
+    this.add.text(this.scale.width - 10, 26, 'Z/Space/Enter 對話互動', {
+      fontSize: '9px', color: '#667788',
+      backgroundColor: '#000000aa', padding: { x: 6, y: 2 },
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+
+    this.add.text(this.scale.width - 10, 42, 'M/ESC 開啟選單', {
+      fontSize: '9px', color: '#667788',
+      backgroundColor: '#000000aa', padding: { x: 6, y: 2 },
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
   }
 
@@ -172,6 +183,17 @@ export class OverworldScene extends Phaser.Scene {
 
     this.wasd.Z.on('down', () => this.interact());
     this.wasd.M.on('down', () => this.showQuickMenu());
+
+    // 額外支援 Space / Enter 作為對話鍵, ESC 開選單
+    const space = this.input.keyboard.addKey('SPACE');
+    const enter = this.input.keyboard.addKey('ENTER');
+    const esc = this.input.keyboard.addKey('ESC');
+    space.on('down', () => this.interact());
+    enter.on('down', () => this.interact());
+    esc.on('down', () => {
+      if (this.dialogueBox) return;
+      this.showQuickMenu();
+    });
   }
 
   update(_time: number, delta: number): void {

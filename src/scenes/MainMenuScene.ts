@@ -66,6 +66,12 @@ export class MainMenuScene extends Phaser.Scene {
       });
     }
 
+    // 操作說明
+    this.add.text(width / 2, height - 65, '操作：方向鍵/WASD 移動 ｜ Z/Space/Enter 對話 ｜ M/ESC 選單', {
+      fontSize: '10px',
+      color: '#556677',
+    }).setOrigin(0.5);
+
     // Credits
     this.add.text(width / 2, height - 30, 'v0.2 Demo — BlancoChiuTW', {
       fontSize: '12px',
