@@ -274,7 +274,17 @@ Boot (載入資源)
 
 ---
 
-## 十四、授權與致謝
+## 十四、素材替換流程
+
+詳見 `資源.md` 第十一節。
+
+1. 將 PNG 放入 `storage/{tiles,characters,monsters,icons}/`
+2. 告知 Claude 檔名
+3. Claude 複製到 `public/assets/` 對應目錄，並修改 BootScene 載入程式碼
+
+---
+
+## 十五、授權與致謝
 
 - **遊戲引擎**：Phaser 3.90 (MIT License)
 - **圖示**：game-icons.net (CC BY 3.0)
