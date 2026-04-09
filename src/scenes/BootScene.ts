@@ -27,7 +27,7 @@ export class BootScene extends Phaser.Scene {
     }
 
     // 載入靈獸（正面 + 背面 + 技能動畫 + 死亡動畫）
-    const animatedMonsters = ['qiongqi', 'kun', 'zhulong', 'baize'];
+    const animatedMonsters = ['qiongqi', 'kun', 'zhulong', 'baize', 'bifang', 'gudiao', 'jiuwei', 'taotie', 'xiangliu', 'xuanwu'];
     for (const m of MONSTERS) {
       this.load.image(`monster_${m.id}`, `assets/monsters/${m.id}.png`);
       if (animatedMonsters.includes(m.id)) {
