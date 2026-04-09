@@ -165,7 +165,10 @@ export class BattleScene extends Phaser.Scene {
     // Player monster (bottom left)
     this.playerSpriteOriginX = width * 0.3;
     this.playerSpriteOriginY = height * 0.5;
-    this.playerSprite = this.add.image(this.playerSpriteOriginX, this.playerSpriteOriginY, `monster_${this.playerMonster.templateId}`);
+    const playerTexKey = this.textures.exists(`monster_${this.playerMonster.templateId}_back`)
+      ? `monster_${this.playerMonster.templateId}_back`
+      : `monster_${this.playerMonster.templateId}`;
+    this.playerSprite = this.add.image(this.playerSpriteOriginX, this.playerSpriteOriginY, playerTexKey);
     this.playerSprite.setDisplaySize(120, 120);
     this.applyRealmVisual(this.playerSprite, this.playerMonster);
 
@@ -816,6 +819,28 @@ export class BattleScene extends Phaser.Scene {
     const sprite = isPlayer ? this.playerSprite : this.enemySprite;
     const targetSprite = isPlayer ? this.enemySprite : this.playerSprite;
 
+    // 計算技能動畫索引 (1-6)
+    const atkTemplate = getTemplate(attacker.templateId);
+    const skillIdx = Math.min(6, Math.max(1,
+      (atkTemplate.skills.findIndex(s => s.skill.name === skill.name) % 6) + 1));
+    const skillTexKey = `monster_${attacker.templateId}_skill${skillIdx}_`;
+    const hasSkillAnim = this.textures.exists(skillTexKey + '0');
+
+    // 保存原始材質以便還原
+    const origTexture = sprite.texture.key;
+
+    // 播放技能動畫幀 (3幀循環)
+    let skillAnimTimer: Phaser.Time.TimerEvent | null = null;
+    if (hasSkillAnim) {
+      let frame = 0;
+      sprite.setTexture(skillTexKey + '0');
+      skillAnimTimer = this.time.addEvent({
+        delay: 100,
+        callback: () => { frame = (frame + 1) % 3; sprite.setTexture(skillTexKey + frame); },
+        repeat: 5,
+      });
+    }
+
     // 攻擊者衝刺動畫
     this.tweens.add({
       targets: sprite,
@@ -823,6 +848,11 @@ export class BattleScene extends Phaser.Scene {
       duration: 100,
       yoyo: true,
       onComplete: () => {
+        // 還原攻擊者材質
+        if (hasSkillAnim) {
+          if (skillAnimTimer) skillAnimTimer.destroy();
+          sprite.setTexture(origTexture);
+        }
         // 播放屬性特效
         this.playSkillVfx(skill, targetSprite.x, targetSprite.y, () => {
           // 被擊中閃爍
@@ -933,13 +963,45 @@ export class BattleScene extends Phaser.Scene {
     showNext(0);
   }
 
+  private playDeathAnim(
+    sprite: Phaser.GameObjects.Image, templateId: string, onDone: () => void,
+  ): void {
+    // 檢查是否有死亡動畫幀
+    const baseKey = `monster_${templateId}_dead_`;
+    if (!this.textures.exists(baseKey + '0')) {
+      // 沒有死亡動畫，直接淡出
+      this.tweens.add({
+        targets: sprite, alpha: 0, y: sprite.y + 30, duration: 500,
+        onComplete: onDone,
+      });
+      return;
+    }
+    // 計算死亡幀數
+    let deadFrames = 0;
+    while (this.textures.exists(baseKey + deadFrames)) deadFrames++;
+    // 播放死亡動畫幀
+    let frame = 0;
+    sprite.setTexture(baseKey + '0');
+    const timer = this.time.addEvent({
+      delay: 150,
+      callback: () => {
+        frame++;
+        if (frame < deadFrames) {
+          sprite.setTexture(baseKey + frame);
+        } else {
+          timer.destroy();
+          this.tweens.add({
+            targets: sprite, alpha: 0, y: sprite.y + 20, duration: 300,
+            onComplete: onDone,
+          });
+        }
+      },
+      repeat: deadFrames - 1,
+    });
+  }
+
   private onEnemyDefeated(): void {
-    this.tweens.add({
-      targets: this.enemySprite,
-      alpha: 0,
-      y: this.enemySprite.y + 30,
-      duration: 500,
-      onComplete: () => {
+    this.playDeathAnim(this.enemySprite, this.enemyMonster.templateId, () => {
         let exp = getExpReward(this.enemyMonster, this.playerMonster.level);
 
         // 越階經驗加成：敵方境界每高一階 +75%
@@ -1058,11 +1120,11 @@ export class BattleScene extends Phaser.Scene {
 
           this.showMessage('戰鬥勝利！', () => this.endBattle());
         });
-      },
     });
   }
 
   private onPlayerMonsterDefeated(): void {
+    this.playDeathAnim(this.playerSprite, this.playerMonster.templateId, () => {
     this.showMessage(`${this.playerMonster.nickname} 倒下了！`, () => {
       const state = getState();
 
@@ -1077,7 +1139,7 @@ export class BattleScene extends Phaser.Scene {
           this.playerMonster = state.team[nextAliveIdx];
           resetStatStages(this.playerMonster);
           clearStatus(this.playerMonster);
-          this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
+          this.playerSprite.setTexture(this.textures.exists(`monster_${this.playerMonster.templateId}_back`) ? `monster_${this.playerMonster.templateId}_back` : `monster_${this.playerMonster.templateId}`);
           this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
           this.updateInfoPanels();
           this.showMessage(`變身被擊破了！派出 ${this.playerMonster.nickname}！`, () => {
@@ -1150,7 +1212,11 @@ export class BattleScene extends Phaser.Scene {
       this.playerMonster = state.team[nextAlive];
       resetStatStages(this.playerMonster);
       clearStatus(this.playerMonster);
-      this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
+      const nextTexKey = this.textures.exists(`monster_${this.playerMonster.templateId}_back`)
+        ? `monster_${this.playerMonster.templateId}_back`
+        : `monster_${this.playerMonster.templateId}`;
+      this.playerSprite.setTexture(nextTexKey);
+      this.playerSprite.setAlpha(1);
       this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
       this.updateInfoPanels();
 
@@ -1158,6 +1224,7 @@ export class BattleScene extends Phaser.Scene {
         this.isAnimating = false;
         this.showActions();
       });
+    });
     });
   }
 
@@ -1271,7 +1338,7 @@ export class BattleScene extends Phaser.Scene {
           this.playerMonster = m;
           resetStatStages(this.playerMonster);
           clearStatus(this.playerMonster);
-          this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
+          this.playerSprite.setTexture(this.textures.exists(`monster_${this.playerMonster.templateId}_back`) ? `monster_${this.playerMonster.templateId}_back` : `monster_${this.playerMonster.templateId}`);
           this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
           this.updateInfoPanels();
           this.clearButtons();
@@ -1581,7 +1648,7 @@ export class BattleScene extends Phaser.Scene {
           this.playerMonster = getState().team[nextAlive];
           resetStatStages(this.playerMonster);
           clearStatus(this.playerMonster);
-          this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
+          this.playerSprite.setTexture(this.textures.exists(`monster_${this.playerMonster.templateId}_back`) ? `monster_${this.playerMonster.templateId}_back` : `monster_${this.playerMonster.templateId}`);
           this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
           this.updateInfoPanels();
           this.showMessage(`換上了 ${this.playerMonster.nickname}！`, () => {
@@ -1661,7 +1728,7 @@ export class BattleScene extends Phaser.Scene {
           this.playerMonster = newForm;
           clearStatus(this.playerMonster);
           // 更新圖示
-          this.playerSprite.setTexture(`monster_${id}`);
+          this.playerSprite.setTexture(this.textures.exists(`monster_${id}_back`) ? `monster_${id}_back` : `monster_${id}`);
           this.updateInfoPanels();
           this.clearButtons();
           this.showMessage(`你變身為 ${template.name}！(HP ${Math.floor(hpRatio * 100)}%)`, () => {
@@ -1713,7 +1780,7 @@ export class BattleScene extends Phaser.Scene {
           this.playerMonster = m;
           resetStatStages(this.playerMonster);
           clearStatus(this.playerMonster);
-          this.playerSprite.setTexture(`monster_${this.playerMonster.templateId}`);
+          this.playerSprite.setTexture(this.textures.exists(`monster_${this.playerMonster.templateId}_back`) ? `monster_${this.playerMonster.templateId}_back` : `monster_${this.playerMonster.templateId}`);
           this.playerSprite.setPosition(this.playerSpriteOriginX, this.playerSpriteOriginY);
           this.updateInfoPanels();
           this.clearButtons();

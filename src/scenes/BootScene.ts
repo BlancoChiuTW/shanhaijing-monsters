@@ -26,9 +26,22 @@ export class BootScene extends Phaser.Scene {
       this.load.image(`tile_${t}`, `assets/tiles/${t}.png`);
     }
 
-    // 載入靈獸
+    // 載入靈獸（正面 + 背面 + 技能動畫 + 死亡動畫）
+    const animatedMonsters = ['qiongqi', 'kun', 'zhulong', 'baize'];
     for (const m of MONSTERS) {
       this.load.image(`monster_${m.id}`, `assets/monsters/${m.id}.png`);
+      if (animatedMonsters.includes(m.id)) {
+        this.load.image(`monster_${m.id}_back`, `assets/monsters/${m.id}_back.png`);
+        for (let s = 1; s <= 6; s++) {
+          for (let f = 0; f < 3; f++) {
+            this.load.image(`monster_${m.id}_skill${s}_${f}`, `assets/monsters/${m.id}_skill${s}_${f}.png`);
+          }
+        }
+        const deadFrames = m.id === 'zhulong' ? 6 : 3;
+        for (let f = 0; f < deadFrames; f++) {
+          this.load.image(`monster_${m.id}_dead_${f}`, `assets/monsters/${m.id}_dead_${f}.png`);
+        }
+      }
     }
 
     // 載入角色精靈
