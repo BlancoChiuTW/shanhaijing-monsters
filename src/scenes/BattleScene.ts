@@ -1424,9 +1424,14 @@ export class BattleScene extends Phaser.Scene {
     if (this.battleType === 'wild') {
       actions.push({ text: '捕獲', action: () => this.tryCatch() });
     }
+    if (this.battleType === 'wild') {
+      actions.push({ text: '逃跑', action: () => this.tryRun() });
+    } else if (!this.isBoss) {
+      actions.push({ text: '認輸', action: () => this.tryRun() });
+    }
 
     actions.forEach((act, i) => {
-      const x = width / 2 - 80 + i * 80;
+      const x = width / 2 - 80 + i * 70;
       const y = height - 75;
       const btn = this.add.text(x, y, act.text, {
         fontSize: '16px', color: '#ffffff',
