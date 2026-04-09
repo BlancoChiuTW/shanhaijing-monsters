@@ -12,7 +12,8 @@ const TILE_KEYS = ['tile_grass', 'tile_wall', 'tile_tall_grass', 'tile_water', '
 const CULL_BUFFER = 5;
 
 export class OverworldScene extends Phaser.Scene {
-  private player!: Phaser.GameObjects.Image;
+  private player!: Phaser.GameObjects.Sprite;
+  private playerDir: 'down' | 'up' | 'left' | 'right' = 'down';
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
   private currentMap!: GameMap;
@@ -159,13 +160,14 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private createPlayer(): void {
-    this.player = this.add.image(
+    this.player = this.add.sprite(
       this.playerTileX * TILE_SIZE + TILE_SIZE / 2,
       this.playerTileY * TILE_SIZE + TILE_SIZE / 2,
-      'player',
+      'player', 0,
     );
     this.player.setDisplaySize(TILE_SIZE - 2, TILE_SIZE - 2);
     this.player.setDepth(10);
+    this.player.play('player_idle_down');
 
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.cameras.main.setZoom(2);
@@ -413,7 +415,19 @@ export class OverworldScene extends Phaser.Scene {
     else if (this.cursors.up.isDown || this.wasd.W.isDown) dy = -1;
     else if (this.cursors.down.isDown || this.wasd.S.isDown) dy = 1;
 
-    if (dx === 0 && dy === 0) return;
+    if (dx === 0 && dy === 0) {
+      // 停止移動時切換到靜止幀
+      if (this.player.anims.isPlaying) {
+        this.player.play(`player_idle_${this.playerDir}`);
+      }
+      return;
+    }
+
+    // 更新方向
+    if (dx === -1) this.playerDir = 'left';
+    else if (dx === 1) this.playerDir = 'right';
+    else if (dy === -1) this.playerDir = 'up';
+    else if (dy === 1) this.playerDir = 'down';
 
     const newX = this.playerTileX + dx;
     const newY = this.playerTileY + dy;
@@ -429,6 +443,12 @@ export class OverworldScene extends Phaser.Scene {
     this.isMoving = true;
     this.playerTileX = newX;
     this.playerTileY = newY;
+
+    // 播放行走動畫
+    const walkAnim = `player_walk_${this.playerDir}`;
+    if (this.player.anims.currentAnim?.key !== walkAnim) {
+      this.player.play(walkAnim);
+    }
 
     const state = getState();
     state.playerX = newX;

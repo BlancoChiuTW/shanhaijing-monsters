@@ -32,8 +32,10 @@ export class BootScene extends Phaser.Scene {
     }
 
     // 載入角色精靈
-    // player 使用像素 PNG；其餘 NPC 暫用 SVG
-    this.load.image('player', 'assets/characters/player.png');
+    // player: spritesheet (8幀×4方向，每格 64×64)
+    this.load.spritesheet('player', 'assets/characters/player_walk.png', {
+      frameWidth: 64, frameHeight: 64,
+    });
     const npcChars = ['npc_healer', 'npc_fusion', 'npc_trainer', 'npc_default'];
     for (const ch of npcChars) {
       this.load.svg(ch, `assets/characters/${ch}.svg`, { width: 64, height: 64 });
@@ -67,6 +69,18 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     // 生成靈符材質
     this.generateCatchBall();
+
+    // 建立玩家行走動畫 (spritesheet: 8幀×4排, 下/上/左/右)
+    this.anims.create({ key: 'player_walk_down', frames: this.anims.generateFrameNumbers('player', { start: 0, end: 7 }), frameRate: 10, repeat: -1 });
+    this.anims.create({ key: 'player_walk_up', frames: this.anims.generateFrameNumbers('player', { start: 8, end: 15 }), frameRate: 10, repeat: -1 });
+    this.anims.create({ key: 'player_walk_left', frames: this.anims.generateFrameNumbers('player', { start: 16, end: 23 }), frameRate: 10, repeat: -1 });
+    this.anims.create({ key: 'player_walk_right', frames: this.anims.generateFrameNumbers('player', { start: 24, end: 31 }), frameRate: 10, repeat: -1 });
+    // 靜止幀（各方向第一幀）
+    this.anims.create({ key: 'player_idle_down', frames: [{ key: 'player', frame: 0 }], frameRate: 1 });
+    this.anims.create({ key: 'player_idle_up', frames: [{ key: 'player', frame: 8 }], frameRate: 1 });
+    this.anims.create({ key: 'player_idle_left', frames: [{ key: 'player', frame: 16 }], frameRate: 1 });
+    this.anims.create({ key: 'player_idle_right', frames: [{ key: 'player', frame: 24 }], frameRate: 1 });
+
     this.scene.start('Intro');
   }
 

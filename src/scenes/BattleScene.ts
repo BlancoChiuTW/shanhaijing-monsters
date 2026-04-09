@@ -191,7 +191,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.isPlayerCombatant && this.playerCombat) {
       const phx = width * 0.12;
       const phy = height * 0.62;
-      this.playerHumanSprite = this.add.image(phx, phy, 'player');
+      this.playerHumanSprite = this.add.image(phx, phy, 'player', 0);
       this.playerHumanSprite.setDisplaySize(50, 50);
 
       this.add.rectangle(phx, phy - 35, 100, 30, 0x000000, 0.7).setStrokeStyle(1, 0x445566);
