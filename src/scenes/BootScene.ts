@@ -109,6 +109,12 @@ export class BootScene extends Phaser.Scene {
     this.anims.create({ key: 'player_idle_left', frames: [{ key: 'player', frame: 16 }], frameRate: 1 });
     this.anims.create({ key: 'player_idle_right', frames: [{ key: 'player', frame: 24 }], frameRate: 1 });
 
+    // 預渲染 serif 字體，避免 IntroScene 首次渲染卡頓
+    const warmup = this.add.text(-100, -100, '預熱', {
+      fontSize: '22px', fontFamily: 'serif', color: '#000000',
+    });
+    warmup.destroy();
+
     this.scene.start('Intro');
   }
 

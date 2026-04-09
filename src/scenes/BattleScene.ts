@@ -346,7 +346,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.battleType === 'wild') {
       const eTempl = getTemplate(this.enemyMonster.templateId);
       const hpRatio = this.enemyMonster.hp / this.enemyMonster.maxHp;
-      const estRate = eTempl.catchRate * (1 - hpRatio * 0.6) / 255;
+      const estRate = eTempl.catchRate * (0.3 + 1.0 * (1 - hpRatio) ** 1.5) / 255;
       const catchHint = estRate >= 0.5 ? '◎' : estRate >= 0.2 ? '○' : '△';
       actions.push({ icon: 'icon_capture', text: `捕獲${catchHint}`, action: () => this.tryCatch() });
       actions.push({ icon: 'icon_run', text: '逃跑', action: () => this.tryRun() });
@@ -1319,14 +1319,14 @@ export class BattleScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
     const state = getState();
+    const others = state.team.map((m, i) => ({ m, i })).filter(({ i }) => i !== this.playerMonsterIndex);
+    const lineH = Math.min(16, Math.floor(70 / Math.max(others.length, 1)));
 
-    state.team.forEach((m, i) => {
-      if (i === this.playerMonsterIndex) return;
-      const slot = i > this.playerMonsterIndex ? i - 1 : i;
-      const y = height - 95 + slot * 16;
+    others.forEach(({ m, i }, slot) => {
+      const y = height - 95 + slot * lineH;
       const color = m.hp > 0 ? '#ffffff' : '#555555';
       const label = `${m.nickname} Lv.${m.level} HP:${m.hp}/${m.maxHp}`;
-      const btn = this.add.text(30, y, label, { fontSize: '14px', color })
+      const btn = this.add.text(30, y, label, { fontSize: '13px', color })
         .setInteractive({ useHandCursor: true });
 
       if (m.hp > 0) {
@@ -1704,11 +1704,13 @@ export class BattleScene extends Phaser.Scene {
 
     const maxVisible = 5;
     const listStartY = height - 95;
-    seenIds.slice(0, maxVisible).forEach((id, i) => {
+    const visibleIds = seenIds.slice(0, maxVisible);
+    const lineH = Math.min(14, Math.floor(70 / Math.max(visibleIds.length, 1)));
+    visibleIds.forEach((id, i) => {
       const template = MONSTERS.find(m => m.id === id);
       if (!template) return;
       const isCurrent = this.isTransformed && this.playerMonster.templateId === id;
-      const y = listStartY + i * 14;
+      const y = listStartY + i * lineH;
       const label = `${template.name}${isCurrent ? ' [當前]' : ''}`;
       const color = isCurrent ? '#555555' : '#cc66ff';
       const btn = this.add.text(30, y, label, { fontSize: '13px', color })
@@ -1761,8 +1763,9 @@ export class BattleScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const state = getState();
 
+    const teamLineH = Math.min(14, Math.floor(70 / Math.max(state.team.length, 1)));
     state.team.forEach((m, i) => {
-      const y = height - 95 + i * 14;
+      const y = height - 95 + i * teamLineH;
       const color = m.hp > 0 ? '#ffffff' : '#555555';
       const label = `${m.nickname} Lv.${m.level} HP:${m.hp}/${m.maxHp}`;
       const btn = this.add.text(30, y, label, { fontSize: '13px', color })
@@ -1773,7 +1776,6 @@ export class BattleScene extends Phaser.Scene {
         btn.on('pointerout', () => btn.setColor(color));
         btn.on('pointerdown', () => {
           this.isAnimating = true;
-          // 解除變身，派出真正的靈寵
           this.isTransformed = false;
           this.transformedForm = null;
           this.playerMonsterIndex = i;

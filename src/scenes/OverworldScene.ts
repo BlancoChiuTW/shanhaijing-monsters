@@ -1263,7 +1263,7 @@ export class OverworldScene extends Phaser.Scene {
     const container = this.add.container(0, 0);
     container.setScrollFactor(0).setDepth(200);
 
-    const bg = this.add.rectangle(camW / 2, camH / 2, 220, 255, 0x0a0a1a, 0.95);
+    const bg = this.add.rectangle(camW / 2, camH / 2, 220, 280, 0x0a0a1a, 0.95);
     bg.setStrokeStyle(2, 0xffcc44);
     container.add(bg);
 
@@ -1276,6 +1276,7 @@ export class OverworldScene extends Phaser.Scene {
       { icon: 'icon_absorb', text: '練化互吃', action: () => this.showAbsorptionMenu(container) },
       { icon: 'icon_absorb', text: '練妖壺', action: () => { container.destroy(); this.dialogueBox = null; this.showFusionMenu(); } },
       { icon: 'icon_pokedex', text: '靈獸圖鑑', action: () => this.showPokedex(container) },
+      { icon: 'icon_skill', text: '獨斷萬古', action: () => { this.debugGrantExp(container); } },
       { icon: 'icon_save', text: '儲存遊戲', action: () => { saveGame(); closeMenu(); this.showNotification('遊戲已儲存！', 0x44aaff); } },
       { icon: 'icon_close', text: '返回遊戲', action: () => closeMenu() },
     ];
@@ -1306,6 +1307,34 @@ export class OverworldScene extends Phaser.Scene {
       container.destroy();
       this.dialogueBox = null;
     };
+  }
+
+  // ═══════════════════════════════════
+  //  獨斷萬古（測試用：全隊 +99999 EXP）
+  // ═══════════════════════════════════
+  private debugGrantExp(parentContainer: Phaser.GameObjects.Container): void {
+    const state = getState();
+    const results: string[] = [];
+    for (const m of state.team) {
+      const oldLv = m.level;
+      let totalLevels = 0;
+      let remaining = 99999;
+      while (remaining > 0 && m.level < 42) {
+        const chunk = Math.min(remaining, 9999);
+        const r = applyExp(m, chunk);
+        remaining -= chunk;
+        if (r.leveled) totalLevels = r.newLevel - oldLv;
+      }
+      if (totalLevels > 0) {
+        results.push(`${m.nickname} Lv.${oldLv}→${m.level}`);
+      } else {
+        results.push(`${m.nickname} Lv.${m.level}(已滿)`);
+      }
+    }
+    recalcPlayerStats();
+    parentContainer.destroy();
+    this.dialogueBox = null;
+    this.showNotification(`獨斷萬古！\n${results.join(' ')}`, 0xff4488);
   }
 
   // ═══════════════════════════════════

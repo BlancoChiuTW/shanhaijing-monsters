@@ -8,6 +8,8 @@ export class IntroScene extends Phaser.Scene {
   private storyLines: { text: string; delay: number; style?: Partial<Phaser.Types.GameObjects.Text.TextStyle> }[] = [];
   private currentLine = 0;
   private canSkip = false;
+  private storyTweens: Phaser.Tweens.Tween[] = [];
+  private storyTimers: Phaser.Time.TimerEvent[] = [];
 
   constructor() {
     super({ key: 'Intro' });
@@ -153,27 +155,33 @@ export class IntroScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0).setDepth(5);
 
     // 淡入
-    this.tweens.add({
+    const fadeIn = this.tweens.add({
       targets: textObj, alpha: 1, duration: 800, ease: 'Power1',
       onComplete: () => {
         // 停留後淡出
-        this.time.delayedCall(2200, () => {
-          this.tweens.add({
+        const timer = this.time.delayedCall(2200, () => {
+          const fadeOut = this.tweens.add({
             targets: textObj, alpha: 0, duration: 600,
             onComplete: () => {
               textObj.destroy();
               this.showLine(index + 1);
             },
           });
+          this.storyTweens.push(fadeOut);
         });
+        this.storyTimers.push(timer);
       },
     });
+    this.storyTweens.push(fadeIn);
   }
 
   private advanceOrSkip(): void {
-    // 點擊加速：跳到下一句
+    // 點擊加速：跳到下一句（只清理劇情相關 tween/timer，保留粒子動畫）
     if (this.currentLine < this.storyLines.length - 1) {
-      this.tweens.killAll();
+      for (const t of this.storyTweens) { if (t.isPlaying()) t.stop(); }
+      for (const t of this.storyTimers) { t.remove(); }
+      this.storyTweens = [];
+      this.storyTimers = [];
       this.children.getAll().forEach(child => {
         if (child instanceof Phaser.GameObjects.Text && child.depth === 5) {
           child.destroy();

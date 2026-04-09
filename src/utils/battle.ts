@@ -122,7 +122,9 @@ export function applyBuffSkill(user: MonsterInstance, target: MonsterInstance, s
 export function calculateCatchRate(monster: MonsterInstance): boolean {
   const template = getTemplate(monster.templateId);
   const hpRatio = monster.hp / monster.maxHp;
-  const modifiedRate = template.catchRate * (1 - hpRatio * 0.6);
+  // 血量越低越好抓：滿血 ×0.3，半血 ×0.55，25% ×0.86，10% ×1.11，1% ≈1.28
+  const hpMul = 0.3 + 1.0 * (1 - hpRatio) ** 1.5;
+  const modifiedRate = template.catchRate * hpMul;
   const roll = Math.random() * 255;
   return roll < modifiedRate;
 }
