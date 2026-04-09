@@ -109,28 +109,35 @@ export class MainMenuScene extends Phaser.Scene {
       },
     ];
 
-    const boxSpacing = Math.min(190, (width - 40) / 3);
+    const boxSpacing = Math.min(200, (width - 30) / 3);
     methods.forEach((method, i) => {
       const x = width / 2 + (i - 1) * boxSpacing;
-      const y = 190;
+      const y = 200;
       const boxW = boxSpacing - 10;
 
-      const box = this.add.rectangle(x, y, boxW, 190, 0x1a1a2e, 0.8);
+      const box = this.add.rectangle(x, y, boxW, 220, 0x1a1a2e, 0.8);
       box.setStrokeStyle(2, 0x334455);
       box.setInteractive({ useHandCursor: true });
 
-      this.add.rectangle(x, y - 55, 36, 36, method.color, 0.8);
+      // 功法圖示（有 PNG 用 PNG，否則用色塊）
+      const iconKey = `icon_method_${method.id}`;
+      if (this.textures.exists(iconKey)) {
+        this.add.image(x, y - 60, iconKey).setDisplaySize(48, 48);
+      } else {
+        this.add.rectangle(x, y - 60, 40, 40, method.color, 0.8);
+      }
 
-      this.add.text(x, y - 20, method.name, {
-        fontSize: '18px', fontFamily: 'serif', color: '#ffffff',
+      this.add.text(x, y - 22, method.name, {
+        fontSize: '20px', fontFamily: 'serif', color: '#ffffff',
       }).setOrigin(0.5);
 
-      this.add.text(x, y + 2, method.desc, {
-        fontSize: '15px', color: '#aabbcc',
+      this.add.text(x, y + 6, method.desc, {
+        fontSize: '16px', color: '#aabbcc',
+        padding: { y: 4 },
       }).setOrigin(0.5);
 
-      this.add.text(x, y + 30, method.detail, {
-        fontSize: '13px', color: '#889999', align: 'center', lineSpacing: 2,
+      this.add.text(x, y + 38, method.detail, {
+        fontSize: '14px', color: '#889999', align: 'center', lineSpacing: 4,
         wordWrap: { width: boxW - 16 },
       }).setOrigin(0.5);
 

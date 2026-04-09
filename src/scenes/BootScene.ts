@@ -52,6 +52,15 @@ export class BootScene extends Phaser.Scene {
     for (const ic of pngIcons) {
       this.load.image(`icon_${ic}`, `assets/icons/${ic}.png`);
     }
+    // 功法選擇圖示 (PNG)
+    const methodIcons: Record<string, string> = {
+      '御獸神訣': 'method_beast',
+      '萬靈化型變': 'method_shift',
+      '煉天大法': 'method_refine',
+    };
+    for (const [id, file] of Object.entries(methodIcons)) {
+      this.load.image(`icon_method_${id}`, `assets/icons/${file}.png`);
+    }
 
     // 載入 VFX 特效
     const vfxTypes = ['impact', 'arcane', 'star', 'grow', 'light', 'aura'];
