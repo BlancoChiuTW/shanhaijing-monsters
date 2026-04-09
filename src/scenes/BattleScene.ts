@@ -172,17 +172,23 @@ export class BattleScene extends Phaser.Scene {
     this.playerSprite.setDisplaySize(120, 120);
     this.applyRealmVisual(this.playerSprite, this.playerMonster);
 
-    // Enemy info panel
-    this.add.rectangle(width * 0.25, 30, 200, 50, 0x000000, 0.7).setStrokeStyle(1, 0x445566);
-    this.enemyInfoText = this.add.text(width * 0.25 - 90, 14, '', { fontSize: '16px', color: '#ffffff' });
-    this.enemyHpBg = this.add.rectangle(width * 0.25, 44, 160, 8, 0x333333);
-    this.enemyHpBar = this.add.rectangle(width * 0.25 - 80, 44, 160, 8, 0x44cc44).setOrigin(0, 0.5);
+    // Enemy info panel (加寬 + 加高，避免文字溢出)
+    this.add.rectangle(width * 0.25, 34, 240, 60, 0x000000, 0.7).setStrokeStyle(1, 0x445566);
+    this.enemyInfoText = this.add.text(width * 0.25 - 110, 10, '', {
+      fontSize: '13px', color: '#ffffff', lineSpacing: 1,
+      wordWrap: { width: 220 },
+    });
+    this.enemyHpBg = this.add.rectangle(width * 0.25, 52, 200, 8, 0x333333);
+    this.enemyHpBar = this.add.rectangle(width * 0.25 - 100, 52, 200, 8, 0x44cc44).setOrigin(0, 0.5);
 
-    // Player info panel
-    this.add.rectangle(width * 0.75, height * 0.62, 200, 50, 0x000000, 0.7).setStrokeStyle(1, 0x445566);
-    this.playerInfoText = this.add.text(width * 0.75 - 90, height * 0.62 - 16, '', { fontSize: '16px', color: '#ffffff' });
-    this.playerHpBg = this.add.rectangle(width * 0.75, height * 0.62 + 14, 160, 8, 0x333333);
-    this.playerHpBar = this.add.rectangle(width * 0.75 - 80, height * 0.62 + 14, 160, 8, 0x44cc44).setOrigin(0, 0.5);
+    // Player info panel (同樣加寬)
+    this.add.rectangle(width * 0.75, height * 0.62, 240, 60, 0x000000, 0.7).setStrokeStyle(1, 0x445566);
+    this.playerInfoText = this.add.text(width * 0.75 - 110, height * 0.62 - 22, '', {
+      fontSize: '13px', color: '#ffffff', lineSpacing: 1,
+      wordWrap: { width: 220 },
+    });
+    this.playerHpBg = this.add.rectangle(width * 0.75, height * 0.62 + 18, 200, 8, 0x333333);
+    this.playerHpBar = this.add.rectangle(width * 0.75 - 100, height * 0.62 + 18, 200, 8, 0x44cc44).setOrigin(0, 0.5);
 
     // Message box
     this.add.rectangle(width / 2, height - 55, width - 20, 90, 0x000000, 0.85).setStrokeStyle(1, 0xffcc44);
@@ -243,24 +249,24 @@ export class BattleScene extends Phaser.Scene {
     const pStatusTag = this.playerMonster.statusCondition === 'burn' ? ' [灼]' : this.playerMonster.statusCondition === 'poison' ? ' [毒]' : '';
     const eStatusTag = this.enemyMonster.statusCondition === 'burn' ? ' [灼]' : this.enemyMonster.statusCondition === 'poison' ? ' [毒]' : '';
 
-    // 敵方顯示
+    // 敵方顯示（名稱行 + HP行 分開，避免重疊）
     if (this.enemyIsHuman && this.enemyPlayerCombat) {
-      this.enemyInfoText.setText(`${this.trainerName} Lv.${this.enemyPlayerCombat.level}\nHP:${this.enemyPlayerCombat.hp}/${this.enemyPlayerCombat.maxHp}`);
+      this.enemyInfoText.setText(`${this.trainerName} Lv.${this.enemyPlayerCombat.level}\nHP: ${this.enemyPlayerCombat.hp} / ${this.enemyPlayerCombat.maxHp}`);
     } else {
       const eTemplate = getTemplate(this.enemyMonster.templateId);
       const eElem = eTemplate.element;
-      this.enemyInfoText.setText(
-        `${eShiny}${this.enemyMonster.nickname}(${eElem}) ${eCult.displayName}${eStatusTag}\nHP:${this.enemyMonster.hp}/${this.enemyMonster.maxHp}${eStages}`
-      );
+      const line1 = `${eShiny}${this.enemyMonster.nickname}(${eElem}) ${eCult.displayName}${eStatusTag}`;
+      const line2 = `HP: ${this.enemyMonster.hp} / ${this.enemyMonster.maxHp}${eStages}`;
+      this.enemyInfoText.setText(`${line1}\n${line2}`);
     }
 
     // 玩家顯示
     if (this.playerIsHuman && this.playerCombat) {
-      this.playerInfoText.setText(`靈獸師 Lv.${this.playerCombat.level}\nHP:${this.playerCombat.hp}/${this.playerCombat.maxHp}`);
+      this.playerInfoText.setText(`靈獸師 Lv.${this.playerCombat.level}\nHP: ${this.playerCombat.hp} / ${this.playerCombat.maxHp}`);
     } else {
-      this.playerInfoText.setText(
-        `${transformTag}${pShiny}${this.playerMonster.nickname} ${pCult.displayName}${pStatusTag}\nHP:${this.playerMonster.hp}/${this.playerMonster.maxHp}${pStages}`
-      );
+      const line1 = `${transformTag}${pShiny}${this.playerMonster.nickname} ${pCult.displayName}${pStatusTag}`;
+      const line2 = `HP: ${this.playerMonster.hp} / ${this.playerMonster.maxHp}${pStages}`;
+      this.playerInfoText.setText(`${line1}\n${line2}`);
     }
 
     // HP 條
@@ -271,8 +277,8 @@ export class BattleScene extends Phaser.Scene {
       ? Math.max(0, this.playerCombat.hp / this.playerCombat.maxHp)
       : Math.max(0, this.playerMonster.hp / this.playerMonster.maxHp);
 
-    this.tweens.add({ targets: this.enemyHpBar, displayWidth: Math.max(1, 160 * enemyRatio), duration: 300 });
-    this.tweens.add({ targets: this.playerHpBar, displayWidth: Math.max(1, 160 * playerRatio), duration: 300 });
+    this.tweens.add({ targets: this.enemyHpBar, displayWidth: Math.max(1, 200 * enemyRatio), duration: 300 });
+    this.tweens.add({ targets: this.playerHpBar, displayWidth: Math.max(1, 200 * playerRatio), duration: 300 });
 
     this.enemyHpBar.fillColor = enemyRatio > 0.5 ? 0x44cc44 : enemyRatio > 0.2 ? 0xcccc44 : 0xcc4444;
     this.playerHpBar.fillColor = playerRatio > 0.5 ? 0x44cc44 : playerRatio > 0.2 ? 0xcccc44 : 0xcc4444;
