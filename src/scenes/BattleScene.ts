@@ -1005,7 +1005,7 @@ export class BattleScene extends Phaser.Scene {
             } else {
               // 敵方靈寵全滅 → 敵方人類上場
               this.enemyIsHuman = true;
-              this.enemySprite.setTexture('npc_trainer');
+              this.enemySprite.setTexture(this.isBoss ? 'npc_boss' : 'npc_trainer');
               this.enemySprite.setAlpha(1);
               this.enemySprite.setPosition(this.enemySpriteOriginX, this.enemySpriteOriginY);
               this.enemySprite.setDisplaySize(100, 100);

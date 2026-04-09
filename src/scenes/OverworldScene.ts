@@ -199,7 +199,8 @@ export class OverworldScene extends Phaser.Scene {
 
       // NPC 角色精靈 — 依類型載入不同圖片
       let spriteKey = 'npc_default';
-      if (npc.npcType === 'trainer') spriteKey = 'npc_trainer';
+      if (npc.id === 'boss') spriteKey = 'npc_boss';
+      else if (npc.npcType === 'trainer') spriteKey = 'npc_trainer';
       else if (npc.npcType === 'healer') spriteKey = 'npc_healer';
       else if (npc.npcType === 'fusion') spriteKey = 'npc_fusion';
       const sprite = this.add.image(0, 0, spriteKey);

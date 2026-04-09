@@ -36,9 +36,9 @@ export class BootScene extends Phaser.Scene {
     this.load.spritesheet('player', 'assets/characters/player_walk.png', {
       frameWidth: 64, frameHeight: 64,
     });
-    const npcChars = ['npc_healer', 'npc_fusion', 'npc_trainer', 'npc_default'];
+    const npcChars = ['npc_healer', 'npc_fusion', 'npc_trainer', 'npc_default', 'npc_boss'];
     for (const ch of npcChars) {
-      this.load.svg(ch, `assets/characters/${ch}.svg`, { width: 64, height: 64 });
+      this.load.image(ch, `assets/characters/${ch}.png`);
     }
 
     // 載入 UI 圖示 (SVG，修復灰階破圖問題；game-icons.net CC BY 3.0)
