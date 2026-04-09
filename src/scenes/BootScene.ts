@@ -31,9 +31,11 @@ export class BootScene extends Phaser.Scene {
       this.load.image(`monster_${m.id}`, `assets/monsters/${m.id}.png`);
     }
 
-    // 載入角色精靈 (SVG，渲染更清晰)
-    const chars = ['player', 'npc_healer', 'npc_fusion', 'npc_trainer', 'npc_default'];
-    for (const ch of chars) {
+    // 載入角色精靈
+    // player 使用像素 PNG；其餘 NPC 暫用 SVG
+    this.load.image('player', 'assets/characters/player.png');
+    const npcChars = ['npc_healer', 'npc_fusion', 'npc_trainer', 'npc_default'];
+    for (const ch of npcChars) {
       this.load.svg(ch, `assets/characters/${ch}.svg`, { width: 64, height: 64 });
     }
 
