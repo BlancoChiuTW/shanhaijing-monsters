@@ -20,10 +20,10 @@ export class BootScene extends Phaser.Scene {
       fill.width = 296 * p;
     });
 
-    // 載入磁磚 (SVG，渲染更清晰)
+    // 載入磁磚 (PNG 像素風)
     const tileNames = ['grass', 'wall', 'tall_grass', 'water', 'exit', 'path', 'flower'];
     for (const t of tileNames) {
-      this.load.svg(`tile_${t}`, `assets/tiles/${t}.svg`, { width: 64, height: 64 });
+      this.load.image(`tile_${t}`, `assets/tiles/${t}.png`);
     }
 
     // 載入靈獸
