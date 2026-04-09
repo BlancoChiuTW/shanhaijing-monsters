@@ -42,10 +42,15 @@ export class BootScene extends Phaser.Scene {
     }
     this.load.image('boss_dialogue', 'assets/characters/boss_dialogue.png');
 
-    // 載入 UI 圖示 (SVG，修復灰階破圖問題；game-icons.net CC BY 3.0)
-    const icons = ['skill', 'swap', 'capture', 'run', 'backpack', 'absorb', 'pokedex', 'heal', 'save', 'close', 'npc_heal', 'npc_fusion', 'npc_battle'];
-    for (const ic of icons) {
+    // 載入 UI 圖示 (SVG；game-icons.net CC BY 3.0)
+    const svgIcons = ['skill', 'swap', 'capture', 'run', 'backpack', 'absorb', 'pokedex', 'heal', 'save', 'close'];
+    for (const ic of svgIcons) {
       this.load.svg(`icon_${ic}`, `assets/icons/${ic}.svg`, { width: 32, height: 32 });
+    }
+    // NPC 地圖標記圖示 (PNG 像素風)
+    const pngIcons = ['npc_heal', 'npc_fusion', 'npc_battle'];
+    for (const ic of pngIcons) {
+      this.load.image(`icon_${ic}`, `assets/icons/${ic}.png`);
     }
 
     // 載入 VFX 特效

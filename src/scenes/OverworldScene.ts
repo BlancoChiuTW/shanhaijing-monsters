@@ -9,7 +9,7 @@ const TILE_SIZE = 32;
 const TILE_KEYS = ['tile_grass', 'tile_wall', 'tile_tall_grass', 'tile_water', 'tile_exit', 'tile_path', 'tile_flower'];
 
 // 視口裁切用的 buffer（上下左右各多渲染幾格）
-const CULL_BUFFER = 5;
+const CULL_BUFFER = 8;
 
 export class OverworldScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Sprite;
@@ -104,8 +104,8 @@ export class OverworldScene extends Phaser.Scene {
 
     // 計算可見範圍：960/32/zoom=15 寬, 540/32/zoom=8.4 高，加 buffer
     const zoom = 2;
-    const visW = Math.ceil(this.scale.width / TILE_SIZE / zoom) + CULL_BUFFER * 2 + 2;
-    const visH = Math.ceil(this.scale.height / TILE_SIZE / zoom) + CULL_BUFFER * 2 + 2;
+    const visW = Math.ceil(this.scale.width / TILE_SIZE / zoom) + CULL_BUFFER * 2 + 4;
+    const visH = Math.ceil(this.scale.height / TILE_SIZE / zoom) + CULL_BUFFER * 2 + 4;
     this.poolSize = visW * visH;
 
     for (let i = 0; i < this.poolSize; i++) {
@@ -304,14 +304,14 @@ export class OverworldScene extends Phaser.Scene {
 
   private createUI(): void {
     this.mapNameText = this.add.text(10, 10, this.currentMap.name, {
-      fontSize: '18px', fontFamily: 'serif', color: '#ffcc44',
-      backgroundColor: '#000000aa', padding: { x: 8, y: 4 },
+      fontSize: '22px', fontFamily: 'serif', color: '#ffcc44',
+      backgroundColor: '#000000cc', padding: { x: 10, y: 5 },
     }).setScrollFactor(0).setDepth(100);
     this.cameras.main.ignore(this.mapNameText);
 
-    this.infoText = this.add.text(10, 34, '', {
-      fontSize: '14px', color: '#aabbcc',
-      backgroundColor: '#000000aa', padding: { x: 6, y: 3 },
+    this.infoText = this.add.text(10, 40, '', {
+      fontSize: '17px', color: '#ccddee', lineSpacing: 4,
+      backgroundColor: '#000000cc', padding: { x: 8, y: 5 },
     }).setScrollFactor(0).setDepth(100);
     this.cameras.main.ignore(this.infoText);
 

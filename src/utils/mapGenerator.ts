@@ -292,9 +292,9 @@ export function generateQingqiu(seed: number): number[][] {
   // 高草帶
   addTallGrassAlongPaths(tiles, w, h, rng);
 
-  // 出口標記
+  // 出口標記（exitN 無對應地圖出口，改為石板路）
   tiles[exitE.y][exitE.x] = 4;
-  tiles[exitN.y][exitN.x] = 4;
+  tiles[exitN.y][exitN.x] = 5;
 
   ensureConnectivity(tiles, w, h, [entrance, exitE, exitN], rng);
 
