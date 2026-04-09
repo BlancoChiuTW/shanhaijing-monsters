@@ -40,6 +40,7 @@ export class BootScene extends Phaser.Scene {
     for (const ch of npcChars) {
       this.load.image(ch, `assets/characters/${ch}.png`);
     }
+    this.load.image('boss_dialogue', 'assets/characters/boss_dialogue.png');
 
     // 載入 UI 圖示 (SVG，修復灰階破圖問題；game-icons.net CC BY 3.0)
     const icons = ['skill', 'swap', 'capture', 'run', 'backpack', 'absorb', 'pokedex', 'heal', 'save', 'close', 'npc_heal', 'npc_fusion', 'npc_battle'];

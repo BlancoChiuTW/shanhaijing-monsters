@@ -669,13 +669,16 @@ export class OverworldScene extends Phaser.Scene {
       container.add(inner);
 
       // NPC 頭像
+      const isBossNpc = npc.id === 'boss';
       let npcSpriteKey = 'npc_default';
-      if (npc.npcType === 'trainer') npcSpriteKey = 'npc_trainer';
+      if (isBossNpc) npcSpriteKey = 'boss_dialogue';
+      else if (npc.npcType === 'trainer') npcSpriteKey = 'npc_trainer';
       else if (npc.npcType === 'healer') npcSpriteKey = 'npc_healer';
       else if (npc.npcType === 'fusion') npcSpriteKey = 'npc_fusion';
 
+      const portraitSize = isBossNpc ? 52 : 32;
       const portrait = this.add.image(28, camH - boxH / 2 - 4, npcSpriteKey);
-      portrait.setDisplaySize(32, 32);
+      portrait.setDisplaySize(portraitSize, portraitSize);
       container.add(portrait);
 
       // NPC 名稱
@@ -687,7 +690,8 @@ export class OverworldScene extends Phaser.Scene {
 
       // NPC 類型標籤
       let typeTag = '';
-      if (npc.npcType === 'healer') typeTag = '[治療]';
+      if (isBossNpc) typeTag = '[幽都之主]';
+      else if (npc.npcType === 'healer') typeTag = '[治療]';
       else if (npc.npcType === 'fusion') typeTag = '[練妖壺]';
       else if (npc.npcType === 'trainer') typeTag = '[對戰]';
       if (typeTag) {
