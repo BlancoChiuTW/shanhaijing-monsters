@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { getMap, type GameMap, type MapNpc, type MapTreasure } from '../data/maps';
-import { getState, saveGame, getFirstAliveIndex, healTeam, addMonsterToTeam, recalcPlayerStats, healPlayer } from '../utils/gameState';
+import { getState, saveGame, getFirstAliveIndex, healTeam, addMonsterToTeam, recalcPlayerStats, healPlayer, applyPlayerExp } from '../utils/gameState';
 import { createMonsterInstance, MONSTERS, getCultivation, fuseMonsters, swapSkill, getTemplate, type MonsterInstance } from '../data/monsters';
 import { healMonster, applyExp, getExpReward, generateEnemyPlayerStats, generateBossPlayerStats } from '../utils/battle';
 import { findNearestWalkable } from '../utils/mapGenerator';
@@ -1263,7 +1263,7 @@ export class OverworldScene extends Phaser.Scene {
     const container = this.add.container(0, 0);
     container.setScrollFactor(0).setDepth(200);
 
-    const bg = this.add.rectangle(camW / 2, camH / 2, 220, 280, 0x0a0a1a, 0.95);
+    const bg = this.add.rectangle(camW / 2, camH / 2, 220, 310, 0x0a0a1a, 0.95);
     bg.setStrokeStyle(2, 0xffcc44);
     container.add(bg);
 
@@ -1277,6 +1277,7 @@ export class OverworldScene extends Phaser.Scene {
       { icon: 'icon_absorb', text: '練妖壺', action: () => { container.destroy(); this.dialogueBox = null; this.showFusionMenu(); } },
       { icon: 'icon_pokedex', text: '靈獸圖鑑', action: () => this.showPokedex(container) },
       { icon: 'icon_skill', text: '獨斷萬古', action: () => { this.debugGrantExp(container); } },
+      { icon: 'icon_skill', text: '傾刻煉化', action: () => { this.debugBoostPlayer(container); } },
       { icon: 'icon_save', text: '儲存遊戲', action: () => { saveGame(); closeMenu(); this.showNotification('遊戲已儲存！', 0x44aaff); } },
       { icon: 'icon_close', text: '返回遊戲', action: () => closeMenu() },
     ];
@@ -1310,31 +1311,53 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   // ═══════════════════════════════════
-  //  獨斷萬古（測試用：全隊 +99999 EXP）
+  //  獨斷萬古（測試用：全隊+本人 +99999 EXP）
   // ═══════════════════════════════════
   private debugGrantExp(parentContainer: Phaser.GameObjects.Container): void {
     const state = getState();
     const results: string[] = [];
     for (const m of state.team) {
       const oldLv = m.level;
-      let totalLevels = 0;
       let remaining = 99999;
       while (remaining > 0 && m.level < 42) {
         const chunk = Math.min(remaining, 9999);
-        const r = applyExp(m, chunk);
+        applyExp(m, chunk);
         remaining -= chunk;
-        if (r.leveled) totalLevels = r.newLevel - oldLv;
       }
-      if (totalLevels > 0) {
-        results.push(`${m.nickname} Lv.${oldLv}→${m.level}`);
-      } else {
-        results.push(`${m.nickname} Lv.${m.level}(已滿)`);
-      }
+      results.push(m.level > oldLv ? `${m.nickname} Lv.${oldLv}→${m.level}` : `${m.nickname} Lv.${m.level}(滿)`);
     }
-    recalcPlayerStats();
+    // 本人也獲得經驗
+    const oldPlayerLv = state.playerCombat.level;
+    let remaining = 99999;
+    while (remaining > 0 && state.playerCombat.level < 42) {
+      const chunk = Math.min(remaining, 9999);
+      applyPlayerExp(chunk);
+      remaining -= chunk;
+    }
+    const playerMsg = state.playerCombat.level > oldPlayerLv
+      ? `本人 Lv.${oldPlayerLv}→${state.playerCombat.level}`
+      : `本人 Lv.${state.playerCombat.level}(滿)`;
     parentContainer.destroy();
     this.dialogueBox = null;
-    this.showNotification(`獨斷萬古！\n${results.join(' ')}`, 0xff4488);
+    this.showNotification(`獨斷萬古！\n${results.join(' ')}\n${playerMsg}`, 0xff4488);
+  }
+
+  // ═══════════════════════════════════
+  //  傾刻煉化（測試用：本人全屬性 +9999）
+  // ═══════════════════════════════════
+  private debugBoostPlayer(parentContainer: Phaser.GameObjects.Container): void {
+    const state = getState();
+    const pc = state.playerCombat;
+    pc.maxHp += 9999; pc.hp = pc.maxHp;
+    pc.atk += 9999;
+    pc.def += 9999;
+    pc.spd += 9999;
+    parentContainer.destroy();
+    this.dialogueBox = null;
+    this.showNotification(
+      `傾刻煉化！本人屬性暴漲！\nHP:${pc.hp} 攻:${pc.atk} 防:${pc.def} 速:${pc.spd}`,
+      0xff2222,
+    );
   }
 
   // ═══════════════════════════════════
