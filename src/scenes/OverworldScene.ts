@@ -1375,18 +1375,60 @@ export class OverworldScene extends Phaser.Scene {
       container.add(detailBtn);
     });
 
+    // 隊伍靈獸：存入倉庫按鈕
+    if (state.storage.length > 0 || state.team.length > 1) {
+      state.team.forEach((m, i) => {
+        if (state.team.length <= 1) return; // 至少保留一隻
+        const startY = 28 + i * 36;
+        const toStorageBtn = this.add.text(camW - 42, startY + 10, '▼存', {
+          fontSize: '11px', color: '#6688aa',
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+        toStorageBtn.on('pointerover', () => toStorageBtn.setColor('#ffcc44'));
+        toStorageBtn.on('pointerout', () => toStorageBtn.setColor('#6688aa'));
+        toStorageBtn.on('pointerdown', () => {
+          state.storage.push(state.team.splice(i, 1)[0]);
+          this.showBackpack(container);
+        });
+        container.add(toStorageBtn);
+      });
+    }
+
     // 倉庫
     if (state.storage.length > 0) {
       const storageY = 28 + state.team.length * 36 + 5;
-      container.add(this.add.text(10, storageY, `倉庫 (${state.storage.length})`, {
+      container.add(this.add.text(10, storageY, `── 倉庫 (${state.storage.length}) ──`, {
         fontSize: '13px', color: '#667788',
       }));
       state.storage.forEach((m, i) => {
-        const y = storageY + 14 + i * 14;
+        const y = storageY + 16 + i * 18;
         const cult = getCultivation(m.level);
-        container.add(this.add.text(15, y, `${m.nickname} ${cult.displayName}`, {
-          fontSize: '11px', color: '#556677',
+        container.add(this.add.text(15, y, `${m.nickname} ${cult.displayName} HP:${m.hp}/${m.maxHp}`, {
+          fontSize: '11px', color: '#8899aa',
         }));
+        // 取回隊伍按鈕
+        if (state.team.length < 6) {
+          const toTeamBtn = this.add.text(camW - 42, y + 2, '▲隊', {
+            fontSize: '11px', color: '#44aa88',
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+          toTeamBtn.on('pointerover', () => toTeamBtn.setColor('#ffcc44'));
+          toTeamBtn.on('pointerout', () => toTeamBtn.setColor('#44aa88'));
+          toTeamBtn.on('pointerdown', () => {
+            state.team.push(state.storage.splice(i, 1)[0]);
+            this.showBackpack(container);
+          });
+          container.add(toTeamBtn);
+        } else {
+          // 隊伍已滿，提供交換功能
+          const swapBtn = this.add.text(camW - 42, y + 2, '⇄換', {
+            fontSize: '11px', color: '#cc8844',
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+          swapBtn.on('pointerover', () => swapBtn.setColor('#ffcc44'));
+          swapBtn.on('pointerout', () => swapBtn.setColor('#cc8844'));
+          swapBtn.on('pointerdown', () => {
+            this.showSwapPicker(container, i);
+          });
+          container.add(swapBtn);
+        }
       });
     }
 
@@ -1395,6 +1437,67 @@ export class OverworldScene extends Phaser.Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => { container.destroy(); this.dialogueBox = null; });
     container.add(closeBtn);
+
+    this.dialogueBox = container;
+    this.finalizeUI(container);
+  }
+
+  // ═══════════════════════════════════
+  //  隊伍 ↔ 倉庫交換（隊伍已滿時）
+  // ═══════════════════════════════════
+  private showSwapPicker(parentContainer: Phaser.GameObjects.Container, storageIndex: number): void {
+    parentContainer.destroy();
+    this.dialogueBox = null;
+
+    const state = getState();
+    const camW = this.scale.width;
+    const camH = this.scale.height;
+    const storageMonster = state.storage[storageIndex];
+
+    const container = this.add.container(0, 0);
+    container.setScrollFactor(0).setDepth(200);
+
+    const bg = this.add.rectangle(camW / 2, camH / 2, camW - 10, camH - 10, 0x0a0a1a, 0.95);
+    bg.setStrokeStyle(2, 0xcc8844);
+    container.add(bg);
+
+    const cult = getCultivation(storageMonster.level);
+    container.add(this.add.text(camW / 2, 12, `交換 ${storageMonster.nickname}(${cult.displayName})`, {
+      fontSize: '15px', fontFamily: 'serif', color: '#cc8844',
+    }).setOrigin(0.5));
+    container.add(this.add.text(camW / 2, 30, '選擇要換出的隊伍靈獸：', {
+      fontSize: '13px', color: '#889999',
+    }).setOrigin(0.5));
+
+    state.team.forEach((m, i) => {
+      const y = 50 + i * 28;
+      const mCult = getCultivation(m.level);
+      const hpColor = m.hp > 0 ? '#ffffff' : '#ff4444';
+
+      const sprite = this.add.image(22, y + 6, `monster_${m.templateId}`);
+      sprite.setDisplaySize(20, 20);
+      container.add(sprite);
+
+      const btn = this.add.text(40, y, `${m.nickname} ${mCult.displayName} HP:${m.hp}/${m.maxHp}`, {
+        fontSize: '13px', color: hpColor,
+      }).setInteractive({ useHandCursor: true });
+      btn.on('pointerover', () => btn.setColor('#ffcc44'));
+      btn.on('pointerout', () => btn.setColor(hpColor));
+      btn.on('pointerdown', () => {
+        // 交換：隊伍[i] ↔ 倉庫[storageIndex]
+        const temp = state.team[i];
+        state.team[i] = state.storage[storageIndex];
+        state.storage[storageIndex] = temp;
+        this.showBackpack(container);
+      });
+      container.add(btn);
+    });
+
+    const back = this.add.text(camW / 2, camH - 20, '← 返回', {
+      fontSize: '15px', color: '#ffcc44',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    back.on('pointerdown', () => this.showBackpack(container));
+    container.add(back);
 
     this.dialogueBox = container;
     this.finalizeUI(container);
